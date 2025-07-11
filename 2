@@ -1,0 +1,3082 @@
+    def _create_sample_excel(self):
+        """إنشاء ملف Excel نموذجي للاستيراد - محدث بدون الدورات"""
+        import pandas as pd
+        from tkinter import filedialog
+
+        # اختيار مكان حفظ الملف
+        file_path = filedialog.asksaveasfilename(
+            title="حفظ ملف Excel النموذجي",
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+        )
+
+        if not file_path:
+            return
+
+        # إنشاء DataFrame نموذجي
+        sample_data = {
+            "الاسم": ["أحمد محمد علي", "سالم عبدالله القحطاني", "محمد صالح العمري"],
+            "الرتبة": ["نقيب", "رائد", "ملازم أول"],
+            "رقم الهوية": ["1234567890", "0987654321", "1122334455"],
+            "رقم الجوال": ["0501234567", "0551234567", ""],
+            "جهة العمل": ["القوات الخاصة", "الحرس الملكي", "القوات البرية"],
+            "المؤهل الدراسي": ["بكالوريوس", "ماجستير", "ثانوي"]
+        }
+
+        df = pd.DataFrame(sample_data)
+
+        try:
+            # حفظ الملف
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='المدرسون', index=False)
+
+                # تنسيق الملف
+                worksheet = writer.sheets['المدرسون']
+
+                # عرض الأعمدة
+                column_widths = {
+                    'A': 25,  # الاسم
+                    'B': 15,  # الرتبة
+                    'C': 15,  # رقم الهوية
+                    'D': 15,  # رقم الجوال
+                    'E': 25,  # جهة العمل
+                    'F': 20  # المؤهل
+                }
+
+                for column, width in column_widths.items():
+                    worksheet.column_dimensions[column].width = width
+
+            messagebox.showinfo("نجاح", f"تم إنشاء الملف النموذجي:\n{file_path}")
+
+        except Exception as e:
+            messagebox.showerror("خطأ", f"فشل إنشاء الملف:\n{str(e)}")
+
+    def _load_teachers(self):
+        """تحميل بيانات المدرسين من قاعدة البيانات مع التنسيق المحسن"""
+        # مسح البيانات الحالية
+        for item in self.teachers_tree.get_children():
+            self.teachers_tree.delete(item)
+
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute("""
+                SELECT id, name, rank, id_number, workplace, qualification, phone 
+                FROM teachers 
+                ORDER BY name
+            """)
+
+            teachers = cursor.fetchall()
+
+            # إضافة البيانات مع ألوان متناوبة
+            for index, teacher in enumerate(teachers):
+                # البيانات المعروضة (بدون ID)
+                display_data = (
+                    teacher[1],  # name
+                    teacher[2],  # rank
+                    teacher[3],  # id_number
+                    teacher[4],  # workplace
+                    teacher[5],  # qualification
+                    teacher[6]  # phone
+                )
+
+                tag = 'evenrow' if index % 2 == 0 else 'oddrow'
+                item = self.teachers_tree.insert("", tk.END, values=display_data, tags=(tag, f"id_{teacher[0]}"))
+
+            # تحديث عداد المدرسين
+            if hasattr(self, 'teacher_count_label'):
+                self.teacher_count_label.config(text=f"إجمالي عدد المدرسين: {len(teachers)}")
+
+        except Exception as e:
+            messagebox.showerror("خطأ", f"خطأ في تحميل البيانات: {str(e)}")
+
+    def _on_teacher_double_click(self, event):
+        """عرض تفاصيل المدرس عند النقر المزدوج"""
+        selection = self.teachers_tree.selection()
+        if selection:
+            item = self.teachers_tree.item(selection[0])
+            values = item['values']
+
+            # نافذة عرض التفاصيل
+            detail_window = tk.Toplevel(self)
+            detail_window.title(f"تفاصيل المدرس: {values[0]}")
+            detail_window.geometry("600x500")
+            detail_window.configure(bg="#f5f5f5")
+            detail_window.transient(self)
+
+            # توسيط النافذة
+            detail_window.update_idletasks()
+            x = (detail_window.winfo_screenwidth() - 600) // 2
+            y = (detail_window.winfo_screenheight() - 500) // 2
+            detail_window.geometry(f"600x500+{x}+{y}")
+
+            # عرض المعلومات بتنسيق جميل
+            header = tk.Label(
+                detail_window,
+                text=values[0],  # الاسم
+                font=("Tajawal", 20, "bold"),
+                bg="#1976d2",
+                fg="white",
+                pady=15
+            )
+            header.pack(fill=tk.X)
+
+            # إطار المعلومات
+            info_frame = tk.Frame(detail_window, bg="white", padx=30, pady=20)
+            info_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+            labels = [
+                ("الرتبة:", values[1] if len(values) > 1 else "غير محدد"),
+                ("رقم الهوية:", values[2] if len(values) > 2 else "غير محدد"),
+                ("جهة العمل:", values[3] if len(values) > 3 else "غير محدد"),
+                ("المؤهل الدراسي:", values[4] if len(values) > 4 else "غير محدد"),
+                ("رقم الجوال:", values[5] if len(values) > 5 and values[5] else "غير مسجل")
+            ]
+
+            for i, (label, value) in enumerate(labels):
+                row_frame = tk.Frame(info_frame, bg="white")
+                row_frame.pack(fill=tk.X, pady=10)
+
+                tk.Label(
+                    row_frame,
+                    text=label,
+                    font=("Tajawal", 14, "bold"),
+                    bg="white",
+                    fg="#1976d2",
+                    width=15,
+                    anchor=tk.E
+                ).pack(side=tk.LEFT, padx=(0, 10))
+
+                tk.Label(
+                    row_frame,
+                    text=value,
+                    font=("Tajawal", 14),
+                    bg="white",
+                    fg="#424242",
+                    anchor=tk.W
+                ).pack(side=tk.LEFT)
+
+            # زر الإغلاق
+            close_btn = tk.Button(
+                detail_window,
+                text="إغلاق",
+                font=("Tajawal", 12, "bold"),
+                bg="#757575",
+                fg="white",
+                padx=30,
+                pady=8,
+                bd=0,
+                relief=tk.FLAT,
+                cursor="hand2",
+                command=detail_window.destroy
+            )
+            close_btn.pack(pady=10)
+
+    def _show_context_menu(self, event):
+        """عرض قائمة سياق عند النقر بالزر الأيمن"""
+        # تحديد العنصر تحت المؤشر
+        item = self.teachers_tree.identify_row(event.y)
+        if item:
+            self.teachers_tree.selection_set(item)
+
+            # إنشاء القائمة
+            context_menu = tk.Menu(self, tearoff=0, font=("Tajawal", 12))
+            context_menu.configure(bg="white", fg="#424242", activebackground="#e3f2fd")
+
+            context_menu.add_command(label="عرض التفاصيل", command=lambda: self._on_teacher_double_click(None))
+            context_menu.add_separator()
+            context_menu.add_command(label="تعديل", command=self._edit_teacher)
+            context_menu.add_command(label="حذف", command=self._delete_teacher)
+
+            # عرض القائمة
+            context_menu.tk_popup(event.x_root, event.y_root)
+
+    # 2. دالة تعديل بيانات المدرس كاملة
+    def _edit_teacher(self):
+        """تعديل بيانات المدرس المحدد مع مسار التخصص"""
+        selection = self.teachers_tree.selection()
+        if not selection:
+            messagebox.showinfo("تنبيه", "يرجى اختيار مدرس لتعديله")
+            return
+
+        # الحصول على بيانات المدرس
+        item = self.teachers_tree.item(selection[0])
+        values = item['values']
+
+        # استخراج ID من tags
+        tags = item['tags']
+        teacher_id = None
+        for tag in tags:
+            if tag.startswith('id_'):
+                teacher_id = int(tag.split('_')[1])
+                break
+
+        if not teacher_id:
+            messagebox.showerror("خطأ", "لا يمكن تحديد المدرس")
+            return
+
+        # الحصول على البيانات الكاملة من قاعدة البيانات
+        cursor = self.db_conn.cursor()
+        cursor.execute("""
+            SELECT * FROM teachers WHERE id = ?
+        """, (teacher_id,))
+        teacher_data = cursor.fetchone()
+
+        if not teacher_data:
+            messagebox.showerror("خطأ", "لم يتم العثور على بيانات المدرس")
+            return
+
+        # نافذة التعديل
+        edit_window = tk.Toplevel(self)
+        edit_window.title(f"تعديل بيانات: {teacher_data[1]}")
+        edit_window.geometry("700x750")
+        edit_window.configure(bg=self.COLORS["background"])
+        edit_window.transient(self)
+        edit_window.grab_set()
+
+        # توسيط النافذة
+        edit_window.update_idletasks()
+        x = (edit_window.winfo_screenwidth() - 700) // 2
+        y = (edit_window.winfo_screenheight() - 750) // 2
+        edit_window.geometry(f"700x750+{x}+{y}")
+
+        # شريط العنوان
+        header_frame = tk.Frame(edit_window, bg="#1E3A5F", height=80)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        title_label = tk.Label(
+            header_frame,
+            text="تعديل بيانات المدرس",
+            font=("Tajawal", 24, "bold"),
+            bg="#1E3A5F",
+            fg="white"
+        )
+        title_label.pack(expand=True)
+
+        # إطار المحتوى الرئيسي
+        main_frame = tk.Frame(edit_window, bg=self.COLORS["background"])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # إطار الحقول
+        form_frame = tk.Frame(main_frame, bg="#FFFFFF", bd=2, relief=tk.RIDGE)
+        form_frame.pack(fill=tk.BOTH, expand=True)
+
+        inner_form = tk.Frame(form_frame, bg="#FFFFFF", padx=40, pady=30)
+        inner_form.pack(fill=tk.BOTH, expand=True)
+
+        # تنسيق الحقول
+        label_font = ("Tajawal", 14, "bold")
+        entry_font = ("Tajawal", 13)
+
+        # الاسم
+        tk.Label(inner_form, text="الاسم الكامل *", font=label_font,
+                 bg="#FFFFFF", fg="#1E3A5F").grid(row=0, column=0, sticky=tk.W, pady=15)
+        name_entry = tk.Entry(inner_form, font=entry_font, width=35, bd=2, relief=tk.FLAT,
+                              highlightthickness=2, highlightcolor="#1E3A5F")
+        name_entry.insert(0, teacher_data[1])
+        name_entry.grid(row=0, column=1, pady=15, padx=10)
+
+        # الرتبة
+        tk.Label(inner_form, text="الرتبة *", font=label_font,
+                 bg="#FFFFFF", fg="#1E3A5F").grid(row=1, column=0, sticky=tk.W, pady=15)
+        rank_entry = tk.Entry(inner_form, font=entry_font, width=35, bd=2, relief=tk.FLAT,
+                              highlightthickness=2, highlightcolor="#1E3A5F")
+        rank_entry.insert(0, teacher_data[2] or "")
+        rank_entry.grid(row=1, column=1, pady=15, padx=10)
+
+        # رقم الهوية (للقراءة فقط)
+        tk.Label(inner_form, text="رقم الهوية", font=label_font,
+                 bg="#FFFFFF", fg="#1E3A5F").grid(row=2, column=0, sticky=tk.W, pady=15)
+        id_frame = tk.Frame(inner_form, bg="#F0F0F0", bd=2, relief=tk.RIDGE)
+        id_frame.grid(row=2, column=1, pady=15, padx=10, sticky=(tk.W, tk.E))
+        tk.Label(id_frame, text=teacher_data[3], font=entry_font,
+                 bg="#F0F0F0", fg="#666666", padx=10, pady=8).pack(anchor=tk.W)
+
+        # رقم الجوال
+        tk.Label(inner_form, text="رقم الجوال", font=label_font,
+                 bg="#FFFFFF", fg="#1E3A5F").grid(row=3, column=0, sticky=tk.W, pady=15)
+        phone_entry = tk.Entry(inner_form, font=entry_font, width=35, bd=2, relief=tk.FLAT,
+                               highlightthickness=2, highlightcolor="#1E3A5F")
+        phone_entry.insert(0, teacher_data[4] or "")
+        phone_entry.grid(row=3, column=1, pady=15, padx=10)
+
+        # جهة العمل
+        tk.Label(inner_form, text="جهة العمل *", font=label_font,
+                 bg="#FFFFFF", fg="#1E3A5F").grid(row=4, column=0, sticky=tk.W, pady=15)
+        workplace_entry = tk.Entry(inner_form, font=entry_font, width=35, bd=2, relief=tk.FLAT,
+                                   highlightthickness=2, highlightcolor="#1E3A5F")
+        workplace_entry.insert(0, teacher_data[5] or "")
+        workplace_entry.grid(row=4, column=1, pady=15, padx=10)
+
+        # المؤهل الدراسي - محدث بالقيم الجديدة
+        tk.Label(inner_form, text="المؤهل الدراسي *", font=label_font,
+                 bg="#FFFFFF", fg="#1E3A5F").grid(row=5, column=0, sticky=tk.W, pady=15)
+
+        qualifications = ["دكتوراه", "ماجستير", "دبلوم عالي", "بكالوريوس", "جامعة متوسطة", "ثانوي", "لا يوجد مؤهل"]
+        current_qual = teacher_data[6] or "لا يوجد مؤهل"
+
+        # إذا كان المؤهل الحالي غير موجود في القائمة، استبدله بـ "لا يوجد مؤهل"
+        if current_qual not in qualifications:
+            current_qual = "لا يوجد مؤهل"
+
+        qualification_var = tk.StringVar(master=edit_window, value=current_qual)
+
+        # تنسيق Combobox
+        style = ttk.Style()
+        style.configure("Custom.TCombobox",
+                        fieldbackground="white",
+                        borderwidth=2,
+                        relief="flat",
+                        font=entry_font)
+
+        qualification_combo = ttk.Combobox(inner_form, textvariable=qualification_var,
+                                           values=qualifications, font=entry_font,
+                                           width=33, state="readonly", style="Custom.TCombobox")
+        qualification_combo.grid(row=5, column=1, pady=15, padx=10)
+
+        # فئة المدرس
+        tk.Label(inner_form, text="فئة المدرس *", font=label_font,
+                 bg="#FFFFFF", fg="#1E3A5F").grid(row=6, column=0, sticky=tk.W, pady=15)
+
+        categories = ["منسوبي المدينة", "متعاون مدني", "متعاون عسكري", "متعاون عسكري متقاعد"]
+        current_category = teacher_data[7] if len(teacher_data) > 7 else categories[0]
+
+        category_var = tk.StringVar(master=edit_window, value=current_category)
+        category_combo = ttk.Combobox(inner_form, textvariable=category_var,
+                                      values=categories, font=entry_font,
+                                      width=33, state="readonly", style="Custom.TCombobox")
+        category_combo.grid(row=6, column=1, pady=15, padx=10)
+
+        # مسار الدورة المتخصص فيها
+        tk.Label(inner_form, text="مسار الدورة المتخصص فيها", font=label_font,
+                 bg="#FFFFFF", fg="#1E3A5F").grid(row=7, column=0, sticky=tk.W, pady=15)
+
+        specialization_frame = tk.Frame(inner_form, bg="#FFFFFF")
+        specialization_frame.grid(row=7, column=1, pady=15, padx=10, sticky=tk.W)
+
+        # الحصول على مسميات الدورات
+        cursor.execute("SELECT id, name FROM course_names WHERE is_active = 1 ORDER BY name")
+        courses = cursor.fetchall()
+        course_names = ["لا يوجد"] + [course[1] for course in courses] if courses else ["لا يوجد"]
+
+        # الحصول على التخصص الحالي للمدرس
+        cursor.execute("""
+            SELECT course_name FROM course_teacher_paths 
+            WHERE teacher_id = ? 
+            LIMIT 1
+        """, (teacher_id,))
+        current_specialization = cursor.fetchone()
+        current_spec_value = current_specialization[0] if current_specialization else "لا يوجد"
+
+        specialization_var = tk.StringVar(master=edit_window, value=current_spec_value)
+        specialization_combo = ttk.Combobox(specialization_frame, textvariable=specialization_var,
+                                            values=course_names, font=entry_font,
+                                            width=33, state="readonly", style="Custom.TCombobox")
+        specialization_combo.pack()
+
+        # أزرار الإجراءات
+        buttons_frame = tk.Frame(edit_window, bg=self.COLORS["background"])
+        buttons_frame.pack(fill=tk.X, pady=20)
+
+        def save_changes():
+            # جمع البيانات
+            name = name_entry.get().strip()
+            rank = rank_entry.get().strip()
+            phone = phone_entry.get().strip()
+            workplace = workplace_entry.get().strip()
+            qualification = qualification_var.get()
+            category = category_var.get()
+            specialization = specialization_var.get()
+
+            # التحقق من البيانات المطلوبة
+            if not all([name, rank, workplace, qualification]):
+                messagebox.showwarning("تنبيه", "يرجى ملء جميع الحقول المطلوبة")
+                return
+
+            try:
+                cursor = self.db_conn.cursor()
+
+                # تحديث البيانات
+                cursor.execute("""
+                    UPDATE teachers 
+                    SET name=?, rank=?, phone=?, workplace=?, qualification=?, category=?
+                    WHERE id=?
+                """, (name, rank, phone, workplace, qualification, category, teacher_id))
+
+                # تحديث مسار التخصص
+                # حذف المسار القديم
+                cursor.execute("DELETE FROM course_teacher_paths WHERE teacher_id = ?", (teacher_id,))
+
+                # إضافة المسار الجديد إذا كان محدداً
+                if specialization != "لا يوجد":
+                    cursor.execute("""
+                        INSERT INTO course_teacher_paths (course_name, teacher_id, is_responsible, created_date)
+                        VALUES (?, ?, 0, ?)
+                    """, (specialization, teacher_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+
+                self.db_conn.commit()
+
+                messagebox.showinfo("نجاح", "تم تحديث بيانات المدرس بنجاح")
+                edit_window.destroy()
+                self._load_teachers()
+
+            except Exception as e:
+                messagebox.showerror("خطأ", f"حدث خطأ أثناء التحديث: {str(e)}")
+
+        # زر الحفظ
+        save_btn = tk.Button(
+            buttons_frame,
+            text="💾 حفظ التعديلات",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["warning"],
+            fg="white",
+            padx=30,
+            pady=12,
+            bd=0,
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=save_changes
+        )
+        save_btn.pack(side=tk.LEFT, padx=20)
+
+        # تأثيرات hover
+        save_btn.bind("<Enter>", lambda e: save_btn.config(bg="#e0a800"))
+        save_btn.bind("<Leave>", lambda e: save_btn.config(bg=self.COLORS["warning"]))
+
+        # زر الإلغاء
+        cancel_btn = tk.Button(
+            buttons_frame,
+            text="❌ إلغاء",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["danger"],
+            fg="white",
+            padx=30,
+            pady=12,
+            bd=0,
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=edit_window.destroy
+        )
+        cancel_btn.pack(side=tk.RIGHT, padx=20)
+
+        # تأثيرات hover
+        cancel_btn.bind("<Enter>", lambda e: cancel_btn.config(bg="#c82333"))
+        cancel_btn.bind("<Leave>", lambda e: cancel_btn.config(bg=self.COLORS["danger"]))
+
+    def _delete_teacher(self):
+        """حذف المدرس المحدد"""
+        selection = self.teachers_tree.selection()
+        if not selection:
+            messagebox.showinfo("تنبيه", "يرجى اختيار مدرس لحذفه")
+            return
+
+        # الحصول على بيانات المدرس المحدد
+        item = self.teachers_tree.item(selection[0])
+        teacher_data = item['values']
+        teacher_name = teacher_data[0]  # الاسم في العمود الأول
+        teacher_id_number = teacher_data[2]  # رقم الهوية في العمود الثالث
+
+        # استخراج ID من tags
+        tags = item['tags']
+        teacher_id = None
+        for tag in tags:
+            if tag.startswith('id_'):
+                teacher_id = int(tag.split('_')[1])
+                break
+
+        # تأكيد الحذف
+        if messagebox.askyesno("تأكيد الحذف", f"هل تريد حذف المدرس: {teacher_name}؟"):
+            try:
+                cursor = self.db_conn.cursor()
+
+                if teacher_id:
+                    # حذف الدورات المرتبطة أولاً
+                    cursor.execute("DELETE FROM teacher_courses WHERE teacher_id = ?", (teacher_id,))
+
+                    # حذف المدرس
+                    cursor.execute("DELETE FROM teachers WHERE id = ?", (teacher_id,))
+                else:
+                    # إذا لم نجد ID، نستخدم رقم الهوية
+                    cursor.execute("""
+                        DELETE FROM teacher_courses 
+                        WHERE teacher_id IN (
+                            SELECT id FROM teachers WHERE id_number = ?
+                        )
+                    """, (teacher_id_number,))
+
+                    cursor.execute("DELETE FROM teachers WHERE id_number = ?", (teacher_id_number,))
+
+                self.db_conn.commit()
+
+                if cursor.rowcount > 0:
+                    messagebox.showinfo("نجاح", "تم حذف المدرس بنجاح")
+                    self._load_teachers()
+                else:
+                    messagebox.showwarning("تنبيه", "لم يتم العثور على المدرس")
+
+            except Exception as e:
+                messagebox.showerror("خطأ", f"خطأ في حذف المدرس: {str(e)}")
+
+    def _create_courses_tab(self):
+        """إنشاء تبويب إدارة الدورات والجداول"""
+        courses_frame = tk.Frame(self.tab_control, bg=self.COLORS["background"])
+        self.tab_control.add(courses_frame, text="إدارة الدورات والجداول")
+
+        # إطار العنوان والأزرار
+        header_frame = tk.Frame(courses_frame, bg="#1E3A5F", height=80)
+        header_frame.pack(fill=tk.X, padx=10, pady=10)
+        header_frame.pack_propagate(False)
+
+        # عنوان الصفحة
+        title_label = tk.Label(
+            header_frame,
+            text="إدارة البرامج التدريبية",
+            font=self.FONTS["large_title"],
+            bg="#1E3A5F",
+            fg="white"
+        )
+        title_label.pack(side=tk.LEFT, padx=20, pady=20)
+
+        # إطار الأزرار
+        buttons_frame = tk.Frame(header_frame, bg="#1E3A5F")
+        buttons_frame.pack(side=tk.RIGHT, padx=20, pady=20)
+
+        # أزرار الإجراءات
+        buttons = [
+            ("مسميات الدورات", self.COLORS["primary"], self._manage_course_names),
+            ("تنفيذ برنامج تدريبي", self.COLORS["success"], self._add_training_program),
+            ("تعديل برنامج تدريبي", self.COLORS["warning"], self._edit_training_program),
+            ("حذف برنامج تدريبي", self.COLORS["danger"], self._delete_training_program)
+        ]
+
+        for text, color, command in buttons:
+            btn = tk.Button(
+                buttons_frame,
+                text=text,
+                font=self.FONTS["text_bold"],
+                bg=color,
+                fg="white",
+                padx=20,
+                pady=10,
+                bd=0,
+                relief=tk.FLAT,
+                cursor="hand2",
+                command=command
+            )
+            btn.pack(side=tk.LEFT, padx=5)
+
+        # إطار البحث
+        search_frame = tk.Frame(courses_frame, bg=self.COLORS["surface"], height=60)
+        search_frame.pack(fill=tk.X, padx=15, pady=(10, 5))
+        search_frame.pack_propagate(False)
+
+        # محتوى البحث
+        search_container = tk.Frame(search_frame, bg=self.COLORS["surface"])
+        search_container.pack(side=tk.LEFT, padx=20, pady=15)
+
+        tk.Label(
+            search_container,
+            text="بحث:",
+            font=self.FONTS["text_bold"],
+            bg=self.COLORS["surface"]
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        self.program_search_entry = tk.Entry(
+            search_container,
+            font=self.FONTS["text"],
+            width=30
+        )
+        self.program_search_entry.pack(side=tk.LEFT)
+        self.program_search_entry.bind('<KeyRelease>', lambda e: self._search_programs())
+
+        tk.Label(
+            search_container,
+            text="(رقم أو اسم البرنامج)",
+            font=self.FONTS["small"],
+            bg=self.COLORS["surface"],
+            fg="#666"
+        ).pack(side=tk.LEFT, padx=(10, 0))
+
+        # خط فاصل
+        separator = tk.Frame(courses_frame, bg=self.COLORS["border"], height=2)
+        separator.pack(fill=tk.X, padx=15, pady=(0, 10))
+
+        # إطار الجدول الرئيسي
+        main_table_frame = tk.Frame(courses_frame, bg="#FFFFFF", bd=2, relief=tk.RIDGE)
+        main_table_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 10))
+
+        # إطار داخلي للجدول
+        table_frame = tk.Frame(main_table_frame, bg="#FFFFFF")
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
+
+        # إنشاء Treeview بتصميم رسمي
+        style = ttk.Style()
+
+        # تكوين نمط الجدول
+        style.configure("Programs.Treeview",
+                        background="#FFFFFF",
+                        foreground="#000000",
+                        rowheight=45,
+                        fieldbackground="#FFFFFF",
+                        font=("Tajawal", 14, "normal"),
+                        borderwidth=1,
+                        relief="solid")
+
+        # تكوين رؤوس الأعمدة
+        style.configure("Programs.Treeview.Heading",
+                        font=("Tajawal", 16, "bold"),
+                        background="#1E3A5F",
+                        foreground="#FFFFFF",
+                        relief="raised",
+                        borderwidth=1,
+                        padding=[10, 8])
+
+        # شريط التمرير العمودي
+        v_scrollbar = ttk.Scrollbar(table_frame, orient="vertical")
+        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # إنشاء الجدول
+        self.programs_tree = ttk.Treeview(
+            table_frame,
+            columns=("number", "name", "start_date", "end_date", "category", "subjects"),
+            show="tree headings",
+            style="Programs.Treeview",
+            yscrollcommand=v_scrollbar.set,
+            height=10
+        )
+
+        # إخفاء عمود الشجرة
+        self.programs_tree.column("#0", width=0, stretch=tk.NO)
+
+        # تكوين الأعمدة
+        column_configs = [
+            ("number", "رقم البرنامج", 150, tk.CENTER),
+            ("name", "اسم الدورة", 300, tk.CENTER),
+            ("start_date", "تاريخ البداية", 120, tk.CENTER),
+            ("end_date", "تاريخ النهاية", 120, tk.CENTER),
+            ("category", "الفئة", 150, tk.CENTER),
+            ("subjects", "عدد المواد", 100, tk.CENTER)
+        ]
+
+        for col_id, heading, width, anchor in column_configs:
+            self.programs_tree.column(col_id, width=width, anchor=anchor)
+            self.programs_tree.heading(col_id, text=heading, anchor=tk.CENTER)
+
+        # تكوين ألوان الصفوف
+        self.programs_tree.tag_configure('oddrow', background='#FFFFFF')
+        self.programs_tree.tag_configure('evenrow', background='#F0F8FF')
+
+        self.programs_tree.pack(fill=tk.BOTH, expand=True)
+        v_scrollbar.config(command=self.programs_tree.yview)
+
+        # ربط النقر المزدوج لعرض التفاصيل
+        self.programs_tree.bind("<Double-Button-1>", self._show_program_details)
+
+        # إطار المعلومات السفلي
+        info_frame = tk.Frame(courses_frame, bg="#1E3A5F", height=60)
+        info_frame.pack(fill=tk.X, padx=15, pady=(5, 10))
+        info_frame.pack_propagate(False)
+
+        # خط فاصل علوي
+        separator = tk.Frame(info_frame, bg="#FFFFFF", height=2)
+        separator.pack(fill=tk.X)
+
+        # إطار داخلي للمعلومات
+        inner_info = tk.Frame(info_frame, bg="#1E3A5F")
+        inner_info.pack(expand=True)
+
+        self.program_count_label = tk.Label(
+            inner_info,
+            text="إجمالي البرامج التدريبية: 0",
+            font=("Tajawal", 14, "bold"),
+            bg="#1E3A5F",
+            fg="#FFFFFF"
+        )
+        self.program_count_label.pack(pady=15)
+
+        # تحميل بيانات البرامج
+        self._load_training_programs()
+
+    def _add_training_program(self):
+        """إضافة برنامج تدريبي جديد - ملء الشاشة"""
+        add_window = tk.Toplevel(self)
+        add_window.title("تنفيذ برنامج تدريبي")
+
+        # ملء الشاشة
+        add_window.state('zoomed')
+
+        add_window.configure(bg=self.COLORS["background"])
+        add_window.transient(self)
+        add_window.grab_set()
+
+        # شريط العنوان مع الأزرار
+        header_frame = tk.Frame(add_window, bg="#1E3A5F", height=100)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        # إطار داخلي للمحتوى
+        header_content = tk.Frame(header_frame, bg="#1E3A5F")
+        header_content.pack(expand=True, fill=tk.BOTH, padx=30)
+
+        # العنوان على اليسار
+        title_label = tk.Label(
+            header_content,
+            text="تنفيذ برنامج تدريبي جديد",
+            font=("Tajawal", 28, "bold"),
+            bg="#1E3A5F",
+            fg="white"
+        )
+        title_label.pack(side=tk.LEFT, pady=25)
+
+        # إطار الأزرار على اليمين
+        buttons_container = tk.Frame(header_content, bg="#1E3A5F")
+        buttons_container.pack(side=tk.RIGHT, pady=25)
+
+        # تعريف دالة الحفظ هنا لتكون متاحة للزر
+        def save_program():
+            """حفظ البرنامج التدريبي"""
+            program_number = program_number_entry.get().strip()
+            course_name = course_entry.get().strip()
+            start_date = start_date_entry.get()
+            end_date = end_date_entry.get()
+            category = category_var.get()
+
+            if not all([program_number, course_name, start_date, end_date]):
+                messagebox.showwarning("تنبيه", "يرجى ملء جميع الحقول المطلوبة")
+                return
+
+            if course_name not in course_names:
+                messagebox.showwarning("تنبيه", "يرجى اختيار دورة من القائمة أو إضافة دورة جديدة")
+                return
+
+            subjects = []
+            for i, entry in enumerate(subjects_entries):
+                subject_name = entry.get().strip()
+                if subject_name:
+                    subjects.append((subject_name, i + 1))
+
+            if not subjects:
+                messagebox.showwarning("تنبيه", "يرجى إضافة مادة واحدة على الأقل")
+                return
+
+            # السؤال عن نوع الجدول
+            schedule_type_response = messagebox.askyesno(
+                "نوع الجدول",
+                "هل البرنامج متعدد الجداول؟\n\n"
+                "نعم = جدول مختلف لكل أسبوع\n"
+                "لا = جدول واحد لجميع أسابيع البرنامج"
+            )
+
+            schedule_type = "multiple" if schedule_type_response else "single"
+
+            try:
+                cursor = self.db_conn.cursor()
+
+                cursor.execute("SELECT COUNT(*) FROM training_programs WHERE program_number = ?",
+                               (program_number,))
+                if cursor.fetchone()[0] > 0:
+                    messagebox.showerror("خطأ", "رقم البرنامج موجود مسبقاً")
+                    return
+
+                course_id = course_ids.get(course_name)
+
+                # إضافة عمود schedule_type إذا لم يكن موجوداً
+                cursor.execute("PRAGMA table_info(training_programs)")
+                columns = [column[1] for column in cursor.fetchall()]
+                if 'schedule_type' not in columns:
+                    cursor.execute("ALTER TABLE training_programs ADD COLUMN schedule_type TEXT DEFAULT 'multiple'")
+
+                cursor.execute("""
+                    INSERT INTO training_programs 
+                    (program_number, course_name_id, start_date, end_date, category, created_date, schedule_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (program_number, course_id, start_date, end_date, category,
+                      datetime.now().strftime("%Y-%m-%d %H:%M:%S"), schedule_type))
+
+                program_id = cursor.lastrowid
+
+                for subject_name, order in subjects:
+                    cursor.execute("""
+                        INSERT INTO program_subjects (program_id, subject_name, subject_order)
+                        VALUES (?, ?, ?)
+                    """, (program_id, subject_name, order))
+
+                self.db_conn.commit()
+
+                # إذا كان الجدول موحد، اسأل عن إنشاء الجدول مباشرة
+                if schedule_type == "single":
+                    if messagebox.askyesno("إنشاء الجدول", "هل تريد إنشاء الجدول الموحد الآن؟"):
+                        add_window.destroy()
+                        self._manage_program_schedule(program_id, program_number, self)
+                    else:
+                        messagebox.showinfo("نجاح", "تم إضافة البرنامج التدريبي بنجاح")
+                        add_window.destroy()
+                        self._load_training_programs()
+                else:
+                    messagebox.showinfo("نجاح", "تم إضافة البرنامج التدريبي بنجاح")
+                    add_window.destroy()
+                    self._load_training_programs()
+
+            except Exception as e:
+                messagebox.showerror("خطأ", f"حدث خطأ: {str(e)}")
+
+        # زر الحفظ
+        save_btn = tk.Button(
+            buttons_container,
+            text="✓ حفظ",
+            font=("Tajawal", 16, "bold"),
+            bg="#28a745",
+            fg="white",
+            padx=30,
+            pady=10,
+            bd=0,
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=save_program
+        )
+        save_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        # تأثيرات hover لزر الحفظ
+        save_btn.bind("<Enter>", lambda e: save_btn.config(bg="#218838"))
+        save_btn.bind("<Leave>", lambda e: save_btn.config(bg="#28a745"))
+
+        # زر الإلغاء
+        cancel_btn = tk.Button(
+            buttons_container,
+            text="✕ إلغاء",
+            font=("Tajawal", 16, "bold"),
+            bg="#dc3545",
+            fg="white",
+            padx=30,
+            pady=10,
+            bd=0,
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=add_window.destroy
+        )
+        cancel_btn.pack(side=tk.LEFT)
+
+        # تأثيرات hover لزر الإلغاء
+        cancel_btn.bind("<Enter>", lambda e: cancel_btn.config(bg="#c82333"))
+        cancel_btn.bind("<Leave>", lambda e: cancel_btn.config(bg="#dc3545"))
+
+        # إطار المحتوى الرئيسي
+        main_frame = tk.Frame(add_window, bg=self.COLORS["background"])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=50, pady=30)
+
+        # إطار الحقول الأساسية
+        info_frame = tk.Frame(main_frame, bg=self.COLORS["surface"], relief=tk.RIDGE, bd=2)
+        info_frame.pack(fill=tk.X, pady=(0, 30))
+
+        inner_info = tk.Frame(info_frame, bg=self.COLORS["surface"], padx=50, pady=30)
+        inner_info.pack(fill=tk.BOTH)
+
+        # تكوين grid
+        inner_info.grid_columnconfigure(1, weight=1)
+        inner_info.grid_columnconfigure(3, weight=1)
+
+        # خطوط أكبر
+        label_font = ("Tajawal", 16, "bold")
+        entry_font = ("Tajawal", 15)
+
+        # رقم البرنامج
+        tk.Label(
+            inner_info,
+            text="رقم البرنامج:",
+            font=label_font,
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["dark"]
+        ).grid(row=0, column=0, sticky=tk.E, pady=15, padx=(0, 20))
+
+        program_number_entry = tk.Entry(inner_info, font=entry_font, width=25)
+        program_number_entry.grid(row=0, column=1, sticky=tk.W, pady=15)
+
+        # اسم الدورة مع البحث
+        tk.Label(
+            inner_info,
+            text="اسم الدورة:",
+            font=label_font,
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["dark"]
+        ).grid(row=0, column=2, sticky=tk.E, pady=15, padx=(50, 20))
+
+        # الحصول على مسميات الدورات
+        cursor = self.db_conn.cursor()
+        cursor.execute("SELECT id, name FROM course_names WHERE is_active = 1 ORDER BY name")
+        courses = cursor.fetchall()
+        course_names = [course[1] for course in courses] if courses else ["لا توجد دورات مسجلة"]
+        course_ids = {course[1]: course[0] for course in courses}
+
+        # إطار للدورة
+        course_frame = tk.Frame(inner_info, bg=self.COLORS["surface"])
+        course_frame.grid(row=0, column=3, sticky=tk.W, pady=15)
+
+        course_var = tk.StringVar(master=add_window)
+
+        # Entry للبحث
+        course_entry = tk.Entry(course_frame, font=entry_font, width=35)
+        course_entry.pack(side=tk.LEFT)
+
+        # إطار للاقتراحات
+        suggestions_frame = tk.Frame(add_window, bg="white", relief=tk.RAISED, bd=1)
+
+        def update_suggestions(event=None):
+            """تحديث قائمة الاقتراحات"""
+            typed_text = course_entry.get().lower()
+
+            if not typed_text:
+                suggestions_frame.place_forget()
+                return
+
+            filtered = [name for name in course_names if typed_text in name.lower()]
+
+            if not filtered:
+                suggestions_frame.place_forget()
+                return
+
+            for widget in suggestions_frame.winfo_children():
+                widget.destroy()
+
+            for i, suggestion in enumerate(filtered[:10]):
+                btn = tk.Button(
+                    suggestions_frame,
+                    text=suggestion,
+                    font=entry_font,
+                    bg="white",
+                    fg="black",
+                    bd=0,
+                    anchor=tk.W,
+                    padx=10,
+                    pady=5,
+                    cursor="hand2",
+                    command=lambda s=suggestion: select_course(s)
+                )
+                btn.pack(fill=tk.X)
+
+                btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#e3f2fd"))
+                btn.bind("<Leave>", lambda e, b=btn: b.config(bg="white"))
+
+            course_entry.update_idletasks()
+            x = course_entry.winfo_rootx()
+            y = course_entry.winfo_rooty() + course_entry.winfo_height()
+            suggestions_frame.place(x=x, y=y, width=course_entry.winfo_width())
+
+        def select_course(course_name):
+            """اختيار دورة من الاقتراحات"""
+            course_entry.delete(0, tk.END)
+            course_entry.insert(0, course_name)
+            course_var.set(course_name)
+            suggestions_frame.place_forget()
+
+        course_entry.bind('<KeyRelease>', update_suggestions)
+        course_entry.bind('<FocusOut>', lambda e: add_window.after(200, suggestions_frame.place_forget))
+
+        # زر إضافة
+        tk.Button(
+            course_frame,
+            text="+",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["secondary"],
+            fg="white",
+            bd=0,
+            width=3,
+            cursor="hand2",
+            command=lambda: self._quick_add_course_name(add_window, course_entry, course_names)
+        ).pack(side=tk.LEFT, padx=(5, 0))
+
+        # التواريخ
+        tk.Label(
+            inner_info,
+            text="تاريخ البداية:",
+            font=label_font,
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["dark"]
+        ).grid(row=1, column=0, sticky=tk.E, pady=15, padx=(0, 20))
+
+        start_date_entry = DateEntry(
+            inner_info,
+            font=entry_font,
+            date_pattern='yyyy-mm-dd',
+            width=15
+        )
+        start_date_entry.grid(row=1, column=1, sticky=tk.W, pady=15)
+
+        tk.Label(
+            inner_info,
+            text="تاريخ النهاية:",
+            font=label_font,
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["dark"]
+        ).grid(row=1, column=2, sticky=tk.E, pady=15, padx=(50, 20))
+
+        end_date_entry = DateEntry(
+            inner_info,
+            font=entry_font,
+            date_pattern='yyyy-mm-dd',
+            width=15
+        )
+        end_date_entry.grid(row=1, column=3, sticky=tk.W, pady=15)
+
+        # فئة الدورة
+        tk.Label(
+            inner_info,
+            text="فئة الدورة:",
+            font=label_font,
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["dark"]
+        ).grid(row=2, column=0, sticky=tk.E, pady=15, padx=(0, 20))
+
+        categories = ["ضباط", "أفراد", "مشتركة", "مدنيين"]
+        category_var = tk.StringVar(master=add_window, value=categories[0])
+        category_combo = ttk.Combobox(
+            inner_info,
+            textvariable=category_var,
+            values=categories,
+            font=entry_font,
+            width=20,
+            state="readonly"
+        )
+        category_combo.grid(row=2, column=1, sticky=tk.W, pady=15)
+
+        # إطار المواد
+        subjects_frame = tk.Frame(main_frame, bg=self.COLORS["surface"], relief=tk.RIDGE, bd=2)
+        subjects_frame.pack(fill=tk.BOTH, expand=True)
+
+        # عنوان المواد
+        subjects_header = tk.Frame(subjects_frame, bg="#1E3A5F", height=60)
+        subjects_header.pack(fill=tk.X)
+        subjects_header.pack_propagate(False)
+
+        tk.Label(
+            subjects_header,
+            text="مواد البرنامج التدريبي",
+            font=("Tajawal", 20, "bold"),
+            bg="#1E3A5F",
+            fg="white"
+        ).pack(expand=True)
+
+        # إطار قابل للتمرير للمواد
+        subjects_container = tk.Frame(subjects_frame, bg=self.COLORS["surface"])
+        subjects_container.pack(fill=tk.BOTH, expand=True, padx=30, pady=20)
+
+        # Canvas للتمرير
+        canvas = tk.Canvas(subjects_container, bg=self.COLORS["surface"], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(subjects_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.COLORS["surface"])
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        subjects_entries = []
+
+        def add_subject():
+            """إضافة مادة جديدة"""
+            subject_frame = tk.Frame(scrollable_frame, bg=self.COLORS["surface"], pady=8)
+            subject_frame.pack(fill=tk.X, padx=20)
+
+            num = len(subjects_entries) + 1
+            num_label = tk.Label(
+                subject_frame,
+                text=f"المادة {num}:",
+                font=("Tajawal", 15, "bold"),
+                bg=self.COLORS["surface"],
+                fg=self.COLORS["dark"],
+                width=10
+            )
+            num_label.pack(side=tk.LEFT, padx=(0, 15))
+
+            subject_entry = tk.Entry(
+                subject_frame,
+                font=("Tajawal", 14),
+                width=60
+            )
+            subject_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 15))
+
+            def remove_this():
+                subject_frame.destroy()
+                subjects_entries.remove(subject_entry)
+                for i, entry in enumerate(subjects_entries):
+                    parent = entry.master
+                    label = parent.winfo_children()[0]
+                    label.config(text=f"المادة {i + 1}:")
+
+            remove_btn = tk.Button(
+                subject_frame,
+                text="حذف",
+                font=("Tajawal", 12, "bold"),
+                bg=self.COLORS["danger"],
+                fg="white",
+                bd=0,
+                padx=15,
+                pady=8,
+                cursor="hand2",
+                command=remove_this
+            )
+            remove_btn.pack(side=tk.RIGHT)
+
+            subjects_entries.append(subject_entry)
+            canvas.update_idletasks()
+            canvas.yview_moveto(1.0)
+
+        # إضافة 3 مواد افتراضياً
+        for _ in range(3):
+            add_subject()
+
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # زر إضافة مادة
+        add_subject_btn = tk.Button(
+            subjects_frame,
+            text="+ إضافة مادة جديدة",
+            font=("Tajawal", 16, "bold"),
+            bg=self.COLORS["secondary"],
+            fg="white",
+            bd=0,
+            padx=30,
+            pady=12,
+            cursor="hand2",
+            command=add_subject
+        )
+        add_subject_btn.pack(pady=15)
+
+    def _quick_add_course_name(self, parent_window, combo_widget, courses_list):
+        """إضافة مسمى دورة سريع"""
+        dialog = tk.Toplevel(parent_window)
+        dialog.title("إضافة مسمى دورة")
+        dialog.geometry("400x200")
+        dialog.configure(bg=self.COLORS["surface"])
+        dialog.transient(parent_window)
+        dialog.grab_set()
+
+        # توسيط النافذة
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - 400) // 2
+        y = (dialog.winfo_screenheight() - 200) // 2
+        dialog.geometry(f"400x200+{x}+{y}")
+
+        # المحتوى
+        content = tk.Frame(dialog, bg=self.COLORS["surface"], padx=30, pady=30)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            content,
+            text="اسم الدورة:",
+            font=self.FONTS["text_bold"],
+            bg=self.COLORS["surface"]
+        ).pack(anchor=tk.W, pady=(0, 10))
+
+        name_entry = tk.Entry(content, font=self.FONTS["text"], width=35)
+        name_entry.pack(fill=tk.X, pady=(0, 20))
+        name_entry.focus_set()
+
+        def save_course():
+            name = name_entry.get().strip()
+            if not name:
+                messagebox.showwarning("تنبيه", "يرجى إدخال اسم الدورة")
+                return
+
+            try:
+                cursor = self.db_conn.cursor()
+                cursor.execute("""
+                    INSERT INTO course_names (name, description, created_date)
+                    VALUES (?, '', ?)
+                """, (name, datetime.now().strftime("%Y-%m-%d")))
+
+                self.db_conn.commit()
+
+                # تحديث القائمة
+                courses_list.append(name)
+                combo_widget['values'] = courses_list
+                combo_widget.set(name)
+
+                dialog.destroy()
+                messagebox.showinfo("نجاح", "تم إضافة مسمى الدورة بنجاح")
+
+            except sqlite3.IntegrityError:
+                messagebox.showerror("خطأ", "اسم الدورة موجود مسبقاً")
+            except Exception as e:
+                messagebox.showerror("خطأ", f"حدث خطأ: {str(e)}")
+
+        # الأزرار
+        btn_frame = tk.Frame(content, bg=self.COLORS["surface"])
+        btn_frame.pack(fill=tk.X)
+
+        tk.Button(
+            btn_frame,
+            text="حفظ",
+            font=self.FONTS["text_bold"],
+            bg=self.COLORS["success"],
+            fg="white",
+            bd=0,
+            padx=20,
+            pady=8,
+            cursor="hand2",
+            command=save_course
+        ).pack(side=tk.LEFT)
+
+        tk.Button(
+            btn_frame,
+            text="إلغاء",
+            font=self.FONTS["text_bold"],
+            bg=self.COLORS["danger"],
+            fg="white",
+            bd=0,
+            padx=20,
+            pady=8,
+            cursor="hand2",
+            command=dialog.destroy
+        ).pack(side=tk.RIGHT)
+
+        # ربط Enter للحفظ
+        name_entry.bind('<Return>', lambda e: save_course())
+
+    def _load_training_programs(self):
+        """تحميل البرامج التدريبية"""
+        # مسح البيانات الحالية
+        for item in self.programs_tree.get_children():
+            self.programs_tree.delete(item)
+
+        try:
+            cursor = self.db_conn.cursor()
+            cursor.execute("""
+                SELECT tp.id, tp.program_number, cn.name, tp.start_date, 
+                       tp.end_date, tp.category,
+                       (SELECT COUNT(*) FROM program_subjects WHERE program_id = tp.id) as subject_count
+                FROM training_programs tp
+                LEFT JOIN course_names cn ON tp.course_name_id = cn.id
+                ORDER BY tp.start_date DESC
+            """)
+
+            programs = cursor.fetchall()
+
+            for index, program in enumerate(programs):
+                # إزالة id من البيانات المعروضة
+                display_data = program[1:]  # تخطي id
+                tag = 'evenrow' if index % 2 == 0 else 'oddrow'
+                item = self.programs_tree.insert("", tk.END, values=display_data,
+                                                 tags=(tag, f"id_{program[0]}"))
+
+            # تحديث العداد
+            if hasattr(self, 'program_count_label'):
+                self.program_count_label.config(text=f"إجمالي البرامج التدريبية: {len(programs)}")
+
+        except Exception as e:
+            print(f"خطأ في تحميل البرامج: {e}")
+
+    def _search_programs(self):
+        """البحث في البرامج التدريبية"""
+        search_text = self.program_search_entry.get().strip()
+
+        # مسح الجدول
+        for item in self.programs_tree.get_children():
+            self.programs_tree.delete(item)
+
+        try:
+            cursor = self.db_conn.cursor()
+
+            if search_text:
+                cursor.execute("""
+                    SELECT tp.id, tp.program_number, cn.name, tp.start_date, 
+                           tp.end_date, tp.category,
+                           (SELECT COUNT(*) FROM program_subjects WHERE program_id = tp.id) as subject_count
+                    FROM training_programs tp
+                    LEFT JOIN course_names cn ON tp.course_name_id = cn.id
+                    WHERE tp.program_number LIKE ? OR cn.name LIKE ?
+                    ORDER BY tp.start_date DESC
+                """, (f'%{search_text}%', f'%{search_text}%'))
+            else:
+                self._load_training_programs()
+                return
+
+            programs = cursor.fetchall()
+
+            for index, program in enumerate(programs):
+                display_data = program[1:]
+                tag = 'evenrow' if index % 2 == 0 else 'oddrow'
+                item = self.programs_tree.insert("", tk.END, values=display_data,
+                                                 tags=(tag, f"id_{program[0]}"))
+
+        except Exception as e:
+            print(f"خطأ في البحث: {e}")
+
+    def _show_program_details(self, event):
+        """عرض تفاصيل البرنامج التدريبي مع الجدول - تصميم بسيط مع المواد أفقياً"""
+        selection = self.programs_tree.selection()
+        if not selection:
+            return
+
+        # الحصول على id البرنامج من tags
+        item = self.programs_tree.item(selection[0])
+        tags = item['tags']
+        program_id = None
+        for tag in tags:
+            if tag.startswith('id_'):
+                program_id = int(tag.split('_')[1])
+                break
+
+        if not program_id:
+            return
+
+        # نافذة التفاصيل - ملء الشاشة
+        detail_window = tk.Toplevel(self)
+        detail_window.title("تفاصيل البرنامج التدريبي والجدول")
+        detail_window.state('zoomed')
+        detail_window.configure(bg=self.COLORS["background"])
+        detail_window.transient(self)
+        detail_window.grab_set()
+
+        # الحصول على تفاصيل البرنامج
+        cursor = self.db_conn.cursor()
+        cursor.execute("""
+            SELECT tp.program_number, cn.name, tp.start_date, tp.end_date, tp.category
+            FROM training_programs tp
+            LEFT JOIN course_names cn ON tp.course_name_id = cn.id
+            WHERE tp.id = ?
+        """, (program_id,))
+
+        program = cursor.fetchone()
+
+        # حساب عدد الأسابيع
+        from datetime import datetime
+        start_date = datetime.strptime(program[2], "%Y-%m-%d")
+        end_date = datetime.strptime(program[3], "%Y-%m-%d")
+        weeks = ((end_date - start_date).days // 7) + 1
+
+        # شريط العنوان
+        header_frame = tk.Frame(detail_window, bg="#1E3A5F", height=80)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        header_content = tk.Frame(header_frame, bg="#1E3A5F")
+        header_content.pack(expand=True, fill=tk.BOTH, padx=30)
+
+        title_label = tk.Label(
+            header_content,
+            text=f"البرنامج التدريبي: {program[0]} - {program[1]}",
+            font=("Tajawal", 24, "bold"),
+            bg="#1E3A5F",
+            fg="white"
+        )
+        title_label.pack(side=tk.LEFT, pady=20)
+
+        # بعد شريط العنوان، إضافة أزرار التصدير
+        buttons_container = tk.Frame(header_content, bg="#1E3A5F")
+        buttons_container.pack(side=tk.LEFT, pady=20)
+
+        # زر تصدير للمدرس
+        export_teacher_btn = tk.Button(
+            buttons_container,
+            text="تصدير للمدرس",
+            font=("Tajawal", 14, "bold"),
+            bg="#17a2b8",
+            fg="white",
+            padx=20,
+            pady=8,
+            bd=0,
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self._export_schedule_for_teacher(program_id, selected_week.get())
+        )
+        export_teacher_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # زر تصدير عام
+        export_general_btn = tk.Button(
+            buttons_container,
+            text="تصدير الجدول الكامل",
+            font=("Tajawal", 14, "bold"),
+            bg="#6c757d",
+            fg="white",
+            padx=20,
+            pady=8,
+            bd=0,
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self._export_general_schedule(program_id, selected_week.get())
+        )
+        export_general_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # أزرار في الهيدر
+        buttons_container = tk.Frame(header_content, bg="#1E3A5F")
+        buttons_container.pack(side=tk.RIGHT, pady=20)
+
+        # زر إدارة الجدول
+        manage_schedule_btn = tk.Button(
+            buttons_container,
+            text="إدارة الجدول",
+            font=("Tajawal", 14, "bold"),
+            bg="#28a745",
+            fg="white",
+            padx=25,
+            pady=8,
+            bd=0,
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=lambda: self._manage_program_schedule(program_id, program[0], detail_window)
+        )
+        manage_schedule_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        # زر الإغلاق
+        close_btn = tk.Button(
+            buttons_container,
+            text="إغلاق",
+            font=("Tajawal", 14, "bold"),
+            bg="#dc3545",
+            fg="white",
+            padx=25,
+            pady=8,
+            bd=0,
+            relief=tk.FLAT,
+            cursor="hand2",
+            command=detail_window.destroy
+        )
+        close_btn.pack(side=tk.LEFT)
+
+        # إطار المحتوى الرئيسي
+        main_frame = tk.Frame(detail_window, bg=self.COLORS["background"])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        # إطار المعلومات الأساسية
+        info_frame = tk.Frame(main_frame, bg=self.COLORS["surface"], relief=tk.RIDGE, bd=1)
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+
+        inner_info = tk.Frame(info_frame, bg=self.COLORS["surface"], padx=20, pady=15)
+        inner_info.pack(fill=tk.X)
+
+        # معلومات البرنامج في صف واحد
+        info_items = [
+            ("رقم البرنامج:", program[0]),
+            ("اسم الدورة:", program[1]),
+            ("الفئة:", program[4]),
+            ("من:", program[2]),
+            ("إلى:", program[3]),
+            ("عدد الأسابيع:", f"{weeks} أسابيع")
+        ]
+
+        for i, (label, value) in enumerate(info_items):
+            item_frame = tk.Frame(inner_info, bg=self.COLORS["surface"])
+            item_frame.pack(side=tk.LEFT, expand=True, padx=5)
+
+            tk.Label(
+                item_frame,
+                text=label,
+                font=("Tajawal", 12, "bold"),
+                bg=self.COLORS["surface"],
+                fg="#1E3A5F"
+            ).pack(side=tk.LEFT)
+
+            tk.Label(
+                item_frame,
+                text=value,
+                font=("Tajawal", 12),
+                bg=self.COLORS["surface"],
+                fg="#333"
+            ).pack(side=tk.LEFT, padx=(5, 0))
+
+        # إطار المواد - أفقي بسيط
+        subjects_frame = tk.Frame(main_frame, bg=self.COLORS["surface"], relief=tk.RIDGE, bd=1)
+        subjects_frame.pack(fill=tk.X, pady=(0, 10))
+
+        subjects_container = tk.Frame(subjects_frame, bg=self.COLORS["surface"], padx=15, pady=10)
+        subjects_container.pack(fill=tk.X)
+
+        # عنوان المواد
+        tk.Label(
+            subjects_container,
+            text="مواد البرنامج:",
+            font=("Tajawal", 13, "bold"),
+            bg=self.COLORS["surface"],
+            fg="#1E3A5F"
+        ).pack(side=tk.LEFT, padx=(0, 15))
+
+        # الحصول على المواد
+        cursor.execute("""
+            SELECT id, subject_name, subject_order 
+            FROM program_subjects 
+            WHERE program_id = ? AND subject_order != 999
+            ORDER BY subject_order
+        """, (program_id,))
+
+        subjects = cursor.fetchall()
+
+        # عرض المواد أفقياً
+        for idx, subject in enumerate(subjects):
+            if idx > 0:
+                # فاصل بين المواد
+                tk.Label(
+                    subjects_container,
+                    text=" | ",
+                    font=("Tajawal", 13),
+                    bg=self.COLORS["surface"],
+                    fg="#999"
+                ).pack(side=tk.LEFT)
+
+            # المادة
+            tk.Label(
+                subjects_container,
+                text=f"{subject[2]}. {subject[1]}",
+                font=("Tajawal", 13),
+                bg=self.COLORS["surface"],
+                fg="#333"
+            ).pack(side=tk.LEFT, padx=5)
+
+        # إطار اختيار الأسبوع
+        week_selector_frame = tk.Frame(main_frame, bg=self.COLORS["surface"], height=50)
+        week_selector_frame.pack(fill=tk.X, pady=(0, 10))
+        week_selector_frame.pack_propagate(False)
+
+        week_container = tk.Frame(week_selector_frame, bg=self.COLORS["surface"])
+        week_container.pack(expand=True, fill=tk.BOTH, padx=20, pady=5)
+
+        tk.Label(
+            week_container,
+            text="اختر الأسبوع:",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["surface"],
+            fg="#1E3A5F"
+        ).pack(side=tk.LEFT, padx=(0, 15))
+
+        # متغير الأسبوع المختار
+        selected_week = tk.IntVar(value=1)
+
+        # إطار أزرار الأسابيع
+        weeks_buttons_frame = tk.Frame(week_container, bg=self.COLORS["surface"])
+        weeks_buttons_frame.pack(side=tk.LEFT)
+
+        week_buttons = []
+
+        def show_week_schedule(week_num):
+            """عرض جدول أسبوع محدد"""
+            selected_week.set(week_num)
+
+            # تحديث ألوان الأزرار
+            for i, btn in enumerate(week_buttons):
+                if i + 1 == week_num:
+                    btn.config(bg="#1E3A5F", fg="white")
+                else:
+                    btn.config(bg="#E0E0E0", fg="black")
+
+            # تحديث عرض الجدول
+            for widget in schedule_container.winfo_children():
+                widget.destroy()
+            self._create_schedule_view(schedule_container, program_id, week_number=week_num, readonly=True)
+
+        # إنشاء أزرار الأسابيع
+        for week in range(1, weeks + 1):
+            week_btn = tk.Button(
+                weeks_buttons_frame,
+                text=f"أسبوع {week}",
+                font=("Tajawal", 11, "bold"),
+                bg="#E0E0E0" if week != 1 else "#1E3A5F",
+                fg="black" if week != 1 else "white",
+                width=9,
+                height=1,
+                bd=0,
+                relief=tk.FLAT,
+                cursor="hand2",
+                command=lambda w=week: show_week_schedule(w)
+            )
+            week_btn.pack(side=tk.LEFT, padx=3)
+            week_buttons.append(week_btn)
+
+            # تأثيرات hover
+            def on_enter(e, btn=week_btn, week_num=week):
+                if selected_week.get() != week_num:
+                    btn.config(bg="#BDBDBD")
+
+            def on_leave(e, btn=week_btn, week_num=week):
+                if selected_week.get() == week_num:
+                    btn.config(bg="#1E3A5F", fg="white")
+                else:
+                    btn.config(bg="#E0E0E0", fg="black")
+
+            week_btn.bind("<Enter>", on_enter)
+            week_btn.bind("<Leave>", on_leave)
+
+        # إطار الجدول الدراسي - ملء المساحة المتبقية
+        schedule_frame = tk.Frame(main_frame, bg=self.COLORS["surface"], relief=tk.RIDGE, bd=1)
+        schedule_frame.pack(fill=tk.BOTH, expand=True)
+
+        schedule_header = tk.Frame(schedule_frame, bg="#1E3A5F", height=35)
+        schedule_header.pack(fill=tk.X)
+        schedule_header.pack_propagate(False)
+
+        tk.Label(
+            schedule_header,
+            text="الجدول الدراسي",
+            font=("Tajawal", 14, "bold"),
+            bg="#1E3A5F",
+            fg="white"
+        ).pack(expand=True)
+
+        # إطار الجدول
+        schedule_container = tk.Frame(schedule_frame, bg="white", padx=10, pady=10)
+        schedule_container.pack(fill=tk.BOTH, expand=True)
+
+        # عرض جدول الأسبوع الأول افتراضياً
+        show_week_schedule(1)
+
+    def _create_schedule_view(self, parent_frame, program_id, week_number=1, readonly=False):
+        """إنشاء عرض الجدول الدراسي مع نسخ مباشر مع التحقق من التعارض"""
+        # التحقق من نوع الجدول
+        cursor = self.db_conn.cursor()
+        cursor.execute("SELECT schedule_type FROM training_programs WHERE id = ?", (program_id,))
+        result = cursor.fetchone()
+        schedule_type = result[0] if result and result[0] else "multiple"
+
+        # إذا كان الجدول موحد، نستخدم الأسبوع 1 دائماً للبيانات
+        if schedule_type == "single":
+            data_week = 1
+        else:
+            data_week = week_number
+
+        # أيام الأسبوع
+        days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"]
+
+        # الحصول على أوقات الحصص
+        cursor.execute("""
+            SELECT period_number, start_time, end_time
+            FROM default_periods
+            WHERE is_break = 0
+            ORDER BY period_number
+        """)
+        periods = cursor.fetchall()
+
+        # إطار رئيسي للتوسيط
+        center_frame = tk.Frame(parent_frame, bg=self.COLORS["background"])
+        center_frame.pack(fill=tk.BOTH, expand=True)
+
+        # إطار الجدول
+        table_frame = tk.Frame(center_frame, bg="white", relief=tk.GROOVE, bd=2)
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        # عكس ترتيب الأعمدة للعربية - الأيام على اليمين
+        col_index = len(periods)
+
+        # خلية الأسبوع في الزاوية اليمنى العليا
+        week_label = tk.Label(
+            table_frame,
+            text=f"الأسبوع {week_number}",
+            font=("Tajawal", 14, "bold"),
+            bg="#F5F5F5",
+            fg="black",
+            relief=tk.GROOVE,
+            bd=1,
+            width=12
+        )
+        week_label.grid(row=0, column=col_index, sticky="nsew", rowspan=2)
+
+        # عناوين الحصص (من اليمين لليسار)
+        for idx, period in enumerate(periods):
+            col = col_index - idx - 1
+
+            # الحصة
+            period_label = tk.Label(
+                table_frame,
+                text=f"الحصة {period[0]}",
+                font=("Tajawal", 12, "bold"),
+                bg="#F5F5F5",
+                fg="black",
+                relief=tk.GROOVE,
+                bd=1
+            )
+            period_label.grid(row=0, column=col, sticky="nsew")
+
+            # الوقت
+            time_label = tk.Label(
+                table_frame,
+                text=f"{period[1]} - {period[2]}",
+                font=("Tajawal", 10),
+                bg="#FAFAFA",
+                fg="#555555",
+                relief=tk.GROOVE,
+                bd=1
+            )
+            time_label.grid(row=1, column=col, sticky="nsew")
+
+        # التحقق من وجود عمود subject_type
+        cursor.execute("PRAGMA table_info(program_schedule)")
+        columns = [column[1] for column in cursor.fetchall()]
+        has_subject_type = 'subject_type' in columns
+
+        # الحصول على بيانات الجدول
+        if has_subject_type:
+            cursor.execute("""
+                SELECT ps.day_of_week, ps.period_number, ps.subject_id, ps.teacher_id,
+                       ps.teacher_name, psub.subject_name, t.name as teacher_db_name,
+                       ps.subject_type
+                FROM program_schedule ps
+                LEFT JOIN program_subjects psub ON ps.subject_id = psub.id
+                LEFT JOIN teachers t ON ps.teacher_id = t.id
+                WHERE ps.program_id = ? AND ps.week_number = ?
+                ORDER BY ps.day_of_week, ps.period_number
+            """, (program_id, data_week))
+        else:
+            cursor.execute("""
+                SELECT ps.day_of_week, ps.period_number, ps.subject_id, ps.teacher_id,
+                       ps.teacher_name, psub.subject_name, t.name as teacher_db_name,
+                       'نظري' as subject_type
+                FROM program_schedule ps
+                LEFT JOIN program_subjects psub ON ps.subject_id = psub.id
+                LEFT JOIN teachers t ON ps.teacher_id = t.id
+                WHERE ps.program_id = ? AND ps.week_number = ?
+                ORDER BY ps.day_of_week, ps.period_number
+            """, (program_id, data_week))
+
+        schedule_data = {}
+        for row in cursor.fetchall():
+            day = row[0]
+            period = row[1]
+            schedule_data[(day, period)] = {
+                'subject_id': row[2],
+                'teacher_id': row[3],
+                'teacher_name': row[4],
+                'subject': row[5],
+                'teacher_db': row[6],
+                'subject_type': row[7] if len(row) > 7 else 'نظري'
+            }
+
+        # دالة النسخ المباشر للحصة التالية مع التحقق من التعارض
+        def copy_to_next_period(from_day, from_period):
+            """نسخ مباشر إلى الحصة التالية مع التحقق من التعارض"""
+            # الحصول على البيانات المراد نسخها
+            source_data = schedule_data.get((from_day, from_period))
+            if not source_data or not source_data.get('subject'):
+                messagebox.showwarning("تنبيه", "لا توجد بيانات للنسخ في هذه الخانة")
+                return
+
+            # تحديد الحصة التالية
+            next_period = from_period + 1
+
+            # التحقق من وجود حصة تالية
+            if next_period > len(periods):
+                messagebox.showinfo("تنبيه", "لا توجد حصة تالية في نفس اليوم")
+                return
+
+            # التحقق من التعارض إذا كان هناك مدرس
+            if source_data.get('teacher_id'):
+                # استخدام نفس دالة التحقق من التعارض
+                has_conflict, conflict_details = self._check_teacher_conflict(
+                    source_data['teacher_id'],
+                    program_id,
+                    data_week,
+                    from_day,
+                    next_period
+                )
+
+                if has_conflict:
+                    # بناء رسالة التعارض
+                    conflict_msg = "لا يمكن نسخ هذا المدرس للحصة التالية بسبب تعارض:\n\n"
+
+                    for conflict in conflict_details:
+                        conflict_msg += f"• البرنامج: {conflict['program_number']}\n"
+                        conflict_msg += f"  الدورة: {conflict['course_name']}\n"
+                        conflict_msg += f"  المادة: {conflict['subject_name']}\n\n"
+
+                    messagebox.showerror("تعارض في الجدول", conflict_msg)
+                    return
+
+            try:
+                cursor = self.db_conn.cursor()
+
+                # الحصول على معلومات وقت الحصة التالية
+                cursor.execute("""
+                    SELECT start_time, end_time FROM default_periods
+                    WHERE period_number = ?
+                """, (next_period,))
+                time_info = cursor.fetchone()
+
+                if time_info:
+                    # نسخ البيانات مباشرة
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO program_schedule
+                        (program_id, week_number, day_of_week, period_number,
+                         start_time, end_time, subject_id, teacher_id,
+                         subject_type, is_break, teacher_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                    """, (
+                        program_id, data_week, from_day, next_period,
+                        time_info[0], time_info[1],
+                        source_data['subject_id'],
+                        source_data['teacher_id'],
+                        source_data.get('subject_type', 'نظري'),
+                        source_data['teacher_name']
+                    ))
+
+                    self.db_conn.commit()
+
+                    # إعادة تحميل الجدول فوراً
+                    for widget in center_frame.winfo_children():
+                        widget.destroy()
+                    self._create_schedule_view(center_frame, program_id, week_number=week_number, readonly=readonly)
+
+                    messagebox.showinfo("نجاح", "تم النسخ إلى الحصة التالية بنجاح")
+
+            except Exception as e:
+                messagebox.showerror("خطأ", f"حدث خطأ أثناء النسخ: {str(e)}")
+
+        # صفوف الأيام
+        for row_idx, day_name in enumerate(days):
+            # اسم اليوم في العمود الأيمن
+            day_label = tk.Label(
+                table_frame,
+                text=day_name,
+                font=("Tajawal", 12, "bold"),
+                bg="#F5F5F5",
+                fg="black",
+                relief=tk.GROOVE,
+                bd=1,
+                height=2
+            )
+            day_label.grid(row=row_idx + 2, column=col_index, sticky="nsew")
+
+            # خلايا الحصص لكل يوم (من اليمين لليسار)
+            for idx, period in enumerate(periods):
+                col = col_index - idx - 1
+                period_num = period[0]
+                cell_data = schedule_data.get((row_idx, period_num), {})
+
+                # إطار الخلية
+                cell = tk.Frame(table_frame, bg="white", relief=tk.GROOVE, bd=1)
+                cell.grid(row=row_idx + 2, column=col, sticky="nsew", padx=0, pady=0)
+
+                if cell_data.get('subject'):
+                    # عرض المادة
+                    subject_label = tk.Label(
+                        cell,
+                        text=cell_data['subject'],
+                        font=("Tajawal", 11, "bold"),
+                        bg="white",
+                        fg="black",
+                        wraplength=140,
+                        justify=tk.RIGHT
+                    )
+                    subject_label.pack(pady=(5, 2))
+
+                    # نوع المادة
+                    subject_type = cell_data.get('subject_type', 'نظري')
+                    type_color = "#2196F3" if subject_type == "عملي" else "#4CAF50"
+
+                    type_label = tk.Label(
+                        cell,
+                        text=f"({subject_type})",
+                        font=("Tajawal", 9, "bold"),
+                        bg="white",
+                        fg=type_color
+                    )
+                    type_label.pack(pady=(0, 2))
+
+                    # خط فاصل
+                    separator = tk.Frame(cell, bg="#E0E0E0", height=1)
+                    separator.pack(fill=tk.X, padx=15, pady=1)
+
+                    # عرض المدرس
+                    if cell_data.get('teacher_name'):
+                        teacher_text = cell_data['teacher_name']
+                    elif cell_data.get('teacher_db'):
+                        teacher_text = cell_data['teacher_db']
+                    else:
+                        teacher_text = "لم يحدد"
+
+                    teacher_label = tk.Label(
+                        cell,
+                        text=teacher_text,
+                        font=("Tajawal", 9),
+                        bg="white",
+                        fg="#555555",
+                        wraplength=140,
+                        justify=tk.RIGHT
+                    )
+                    teacher_label.pack(pady=(1, 5))
+
+                    if not readonly and (schedule_type == "multiple" or week_number == 1):
+                        # أزرار صغيرة للتعديل والحذف والنسخ
+                        btn_frame = tk.Frame(cell, bg="white")
+                        btn_frame.pack(pady=1)
+
+                        # زر النسخ للحصة التالية (فقط إذا لم تكن الحصة الأخيرة)
+                        if period_num < len(periods):
+                            copy_btn = tk.Button(
+                                btn_frame,
+                                text="نسخ للتالية",
+                                font=("Tajawal", 8),
+                                bg="#17a2b8",
+                                fg="white",
+                                bd=0,
+                                padx=8,
+                                pady=2,
+                                cursor="hand2",
+                                command=lambda d=row_idx, p=period_num: copy_to_next_period(d, p)
+                            )
+                            copy_btn.pack(side=tk.RIGHT, padx=2)
+
+                        edit_btn = tk.Button(
+                            btn_frame,
+                            text="تعديل",
+                            font=("Tajawal", 8),
+                            bg="#666666",
+                            fg="white",
+                            bd=0,
+                            padx=8,
+                            pady=2,
+                            cursor="hand2",
+                            command=lambda d=row_idx, p=period_num: self._show_assignment_options(
+                                program_id, d, p, data_week, parent_frame.winfo_toplevel(), edit_mode=True
+                            )
+                        )
+                        edit_btn.pack(side=tk.RIGHT, padx=2)
+
+                        delete_btn = tk.Button(
+                            btn_frame,
+                            text="حذف",
+                            font=("Tajawal", 8),
+                            bg="#999999",
+                            fg="white",
+                            bd=0,
+                            padx=8,
+                            pady=2,
+                            cursor="hand2",
+                            command=lambda d=row_idx, p=period_num: self._delete_schedule_slot(
+                                program_id, d, p, data_week, center_frame
+                            )
+                        )
+                        delete_btn.pack(side=tk.RIGHT, padx=2)
+
+                elif not readonly and (schedule_type == "multiple" or week_number == 1):
+                    # زر إضافة
+                    add_btn = tk.Button(
+                        cell,
+                        text="+ إضافة",
+                        font=("Tajawal", 10),
+                        bg="#F5F5F5",
+                        fg="#666666",
+                        bd=0,
+                        cursor="hand2",
+                        relief=tk.FLAT,
+                        command=lambda d=row_idx, p=period_num: self._show_assignment_options(
+                            program_id, d, p, data_week, parent_frame.winfo_toplevel()
+                        )
+                    )
+                    add_btn.pack(expand=True, fill=tk.BOTH, padx=15, pady=20)
+
+                    # تأثير عند المرور
+                    add_btn.bind("<Enter>", lambda e, btn=add_btn: btn.config(bg="#E0E0E0"))
+                    add_btn.bind("<Leave>", lambda e, btn=add_btn: btn.config(bg="#F5F5F5"))
+
+                # تكوين ارتفاع الصف
+                table_frame.grid_rowconfigure(row_idx + 2, minsize=100)
+
+            # تكوين أحجام الأعمدة
+            table_frame.grid_columnconfigure(col_index, minsize=100)  # عمود الأيام
+            for col in range(len(periods)):
+                table_frame.grid_columnconfigure(col, minsize=180, weight=1)
+
+            # إذا كان الجدول موحد، عرض ملاحظة
+            if schedule_type == "single" and week_number != 1 and not readonly:
+                note_label = tk.Label(
+                    center_frame,
+                    text="ملاحظة: هذا البرنامج يستخدم جدول موحد لجميع الأسابيع",
+                    font=("Tajawal", 12),
+                    bg=self.COLORS["background"],
+                    fg="#FF6B6B"
+                )
+                note_label.pack(pady=(0, 10))
+
+    def _check_teacher_conflict(self, teacher_id, program_id, week_number, day_index, period_number):
+        """التحقق من تعارض جدول المدرس لجميع الأسابيع"""
+        cursor = self.db_conn.cursor()
+
+        # الحصول على رقم هوية المدرس
+        cursor.execute("SELECT id_number, name FROM teachers WHERE id = ?", (teacher_id,))
+        teacher_info = cursor.fetchone()
+
+        if not teacher_info:
+            return False, None
+
+        teacher_id_number = teacher_info[0]
+        teacher_name = teacher_info[1]
+
+        # الحصول على تواريخ البرنامج الحالي وحساب عدد الأسابيع
+        cursor.execute("""
+            SELECT start_date, end_date FROM training_programs 
+            WHERE id = ?
+        """, (program_id,))
+
+        current_program_dates = cursor.fetchone()
+        from datetime import datetime, timedelta
+
+        current_start = datetime.strptime(current_program_dates[0], "%Y-%m-%d")
+        current_end = datetime.strptime(current_program_dates[1], "%Y-%m-%d")
+        total_weeks = ((current_end - current_start).days // 7) + 1
+
+        conflicts_found = []
+
+        # التحقق من التعارضات لكل أسبوع في البرنامج الحالي
+        for check_week in range(1, total_weeks + 1):
+            # حساب التاريخ الفعلي لكل أسبوع
+            actual_date = current_start + timedelta(weeks=check_week - 1, days=day_index)
+
+            # البحث عن تعارضات في جميع البرامج النشطة
+            cursor.execute("""
+                SELECT DISTINCT 
+                    tp.id,
+                    tp.program_number,
+                    tp.start_date,
+                    tp.end_date,
+                    cn.name as course_name,
+                    ps.week_number,
+                    ps.day_of_week,
+                    ps.period_number,
+                    psub.subject_name,
+                    t.id_number
+                FROM program_schedule ps
+                JOIN training_programs tp ON ps.program_id = tp.id
+                LEFT JOIN course_names cn ON tp.course_name_id = cn.id
+                LEFT JOIN program_subjects psub ON ps.subject_id = psub.id
+                LEFT JOIN teachers t ON ps.teacher_id = t.id
+                WHERE t.id_number = ?
+                AND ps.day_of_week = ?
+                AND ps.period_number = ?
+                AND tp.id != ?
+                AND date(?) BETWEEN date(tp.start_date) AND date(tp.end_date)
+            """, (teacher_id_number, day_index, period_number, program_id, actual_date.strftime("%Y-%m-%d")))
+
+            conflicts = cursor.fetchall()
+
+            for conflict in conflicts:
+                # حساب التاريخ الفعلي للتعارض
+                conflict_start = datetime.strptime(conflict[2], "%Y-%m-%d")
+                conflict_date = conflict_start + timedelta(weeks=conflict[5] - 1, days=conflict[6])
+
+                # التحقق من أن التواريخ متطابقة
+                if conflict_date.date() == actual_date.date():
+                    conflicts_found.append({
+                        'program_number': conflict[1],
+                        'course_name': conflict[4],
+                        'week_number': conflict[5],
+                        'subject_name': conflict[8],
+                        'date': conflict_date.strftime("%Y-%m-%d"),
+                        'conflicting_week_in_current': check_week  # الأسبوع المتعارض في البرنامج الحالي
+                    })
+
+        if conflicts_found:
+            return True, conflicts_found
+
+        return False, None
+
+    def _assign_teacher_subject(self, program_id, day_index, period_number, week_number, parent_window):
+        """تعيين مدرس ومادة مع نوع المادة (عملي/نظري) - يظهر فقط أعضاء هيئة التدريس للدورة"""
+        assign_window = tk.Toplevel(parent_window)
+        assign_window.title("إضافة مدرس ومادة")
+        assign_window.geometry("600x750")
+        assign_window.configure(bg=self.COLORS["surface"])
+        assign_window.transient(parent_window)
+        assign_window.grab_set()
+
+        # توسيط النافذة
+        assign_window.update_idletasks()
+        x = (assign_window.winfo_screenwidth() - 600) // 2
+        y = (assign_window.winfo_screenheight() - 750) // 2
+        assign_window.geometry(f"600x750+{x}+{y}")
+
+        # العنوان
+        days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"]
+
+        cursor = self.db_conn.cursor()
+        cursor.execute("""
+            SELECT start_time, end_time FROM default_periods
+            WHERE period_number = ?
+        """, (period_number,))
+        time_info = cursor.fetchone()
+
+        header = tk.Label(
+            assign_window,
+            text=f"الأسبوع {week_number} - {days[day_index]}\nالحصة {period_number} ({time_info[0]} - {time_info[1]})",
+            font=("Tajawal", 16, "bold"),
+            bg="#2196F3",
+            fg="white",
+            pady=20
+        )
+        header.pack(fill=tk.X)
+
+        # إطار المحتوى
+        content = tk.Frame(assign_window, bg=self.COLORS["surface"], padx=30, pady=20)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        # اختيار المادة
+        tk.Label(
+            content,
+            text="اختر المادة:",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["surface"]
+        ).pack(anchor="w", pady=(0, 10))
+
+        cursor.execute("""
+            SELECT id, subject_name, subject_order
+            FROM program_subjects
+            WHERE program_id = ? AND subject_order != 999
+            ORDER BY subject_order
+        """, (program_id,))
+
+        subjects = cursor.fetchall()
+
+        # متغير لحفظ معرف المادة المختارة
+        selected_subject_id = tk.IntVar(value=0)
+
+        subject_combo = ttk.Combobox(
+            content,
+            font=("Tajawal", 13),
+            state="readonly",
+            width=40
+        )
+
+        # إنشاء قائمة المواد
+        subject_list = []
+        subject_map = {}  # ربط الفهرس بمعرف المادة
+
+        for i, (sid, sname, sorder) in enumerate(subjects):
+            text = f"{sorder}. {sname}"
+            subject_list.append(text)
+            subject_map[i] = sid
+
+        subject_combo['values'] = subject_list
+        subject_combo.pack(fill=tk.X, pady=(0, 20))
+
+        # اختيار أول مادة افتراضياً
+        if subject_list:
+            subject_combo.current(0)
+            selected_subject_id.set(subject_map[0])
+
+        # عند تغيير المادة
+        def on_subject_change(event):
+            index = subject_combo.current()
+            if index >= 0:
+                selected_subject_id.set(subject_map[index])
+
+        subject_combo.bind('<<ComboboxSelected>>', on_subject_change)
+
+        # نوع المادة (عملي/نظري)
+        tk.Label(
+            content,
+            text="نوع المادة:",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["surface"]
+        ).pack(anchor="w", pady=(0, 10))
+
+        subject_type_combo = ttk.Combobox(
+            content,
+            values=["نظري", "عملي"],
+            font=("Tajawal", 13),
+            state="readonly",
+            width=40
+        )
+        subject_type_combo.current(0)  # اختر "نظري" كقيمة افتراضية
+        subject_type_combo.pack(fill=tk.X, pady=(0, 30))
+
+        # الحصول على اسم الدورة من البرنامج التدريبي
+        cursor.execute("""
+            SELECT cn.name 
+            FROM training_programs tp
+            JOIN course_names cn ON tp.course_name_id = cn.id
+            WHERE tp.id = ?
+        """, (program_id,))
+        course_info = cursor.fetchone()
+        course_name = course_info[0] if course_info else None
+
+        # التحقق من وجود أعضاء هيئة تدريس للدورة
+        has_faculty = False
+        if course_name:
+            cursor.execute("""
+                SELECT COUNT(*) FROM course_teacher_paths 
+                WHERE course_name = ?
+            """, (course_name,))
+            has_faculty = cursor.fetchone()[0] > 0
+
+        # إطار خاص بالمدرسين
+        teacher_frame = tk.Frame(content, bg=self.COLORS["surface"])
+        teacher_frame.pack(fill=tk.BOTH, expand=True)
+
+        # متغير لحفظ معرف المدرس المختار
+        selected_teacher_id = tk.IntVar(value=0)
+        teachers_map = {}  # ربط الفهرس بمعرف المدرس
+
+        if has_faculty:
+            # عرض أعضاء هيئة التدريس للدورة فقط
+            tk.Label(
+                teacher_frame,
+                text="اختر المدرس من هيئة التدريس:",
+                font=("Tajawal", 14, "bold"),
+                bg=self.COLORS["surface"],
+                fg="#2E7D32"
+            ).pack(anchor="w", pady=(0, 10))
+
+            # إطار معلومات
+            info_frame = tk.Frame(teacher_frame, bg="#E8F5E9", relief=tk.RIDGE, bd=1)
+            info_frame.pack(fill=tk.X, pady=(0, 10))
+
+            tk.Label(
+                info_frame,
+                text=f"يتم عرض أعضاء هيئة التدريس لدورة: {course_name}",
+                font=("Tajawal", 11),
+                bg="#E8F5E9",
+                fg="#1B5E20"
+            ).pack(pady=5)
+
+            # قائمة المدرسين
+            list_frame = tk.Frame(teacher_frame, bg="white", relief=tk.GROOVE, bd=2)
+            list_frame.pack(fill=tk.BOTH, expand=True)
+
+            scrollbar = tk.Scrollbar(list_frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            teachers_listbox = tk.Listbox(
+                list_frame,
+                font=("Tajawal", 12),
+                yscrollcommand=scrollbar.set,
+                height=10,
+                selectmode=tk.SINGLE
+            )
+            teachers_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=teachers_listbox.yview)
+
+            # تحميل أعضاء هيئة التدريس للدورة
+            cursor.execute("""
+                SELECT DISTINCT t.id, t.name, t.rank, t.workplace, t.category,
+                       CASE WHEN ctp.is_responsible = 1 THEN 1 ELSE 0 END as is_responsible
+                FROM course_teacher_paths ctp
+                JOIN teachers t ON ctp.teacher_id = t.id
+                WHERE ctp.course_name = ?
+                ORDER BY is_responsible DESC, t.name
+            """, (course_name,))
+
+            faculty_members = cursor.fetchall()
+
+            for i, (tid, name, rank, workplace, category, is_responsible) in enumerate(faculty_members):
+                display_text = f"{name} - {rank}"
+                if workplace:
+                    display_text += f" ({workplace})"
+
+                # إضافة تمييز للمسؤول
+                if is_responsible:
+                    display_text = "★ " + display_text + " - مسؤول الدورة"
+                elif category and "متعاون" in category:
+                    display_text += f" - {category}"
+
+                teachers_listbox.insert(tk.END, display_text)
+                teachers_map[i] = tid
+
+            # تحديد أول مدرس افتراضياً
+            if faculty_members:
+                teachers_listbox.selection_set(0)
+                selected_teacher_id.set(teachers_map[0])
+
+            # عند اختيار مدرس
+            def on_teacher_select(event):
+                selection = teachers_listbox.curselection()
+                if selection:
+                    selected_teacher_id.set(teachers_map[selection[0]])
+
+            teachers_listbox.bind('<<ListboxSelect>>', on_teacher_select)
+
+        else:
+            # البحث العادي عن المدرسين
+            tk.Label(
+                teacher_frame,
+                text="البحث عن مدرس:",
+                font=("Tajawal", 14, "bold"),
+                bg=self.COLORS["surface"]
+            ).pack(anchor="w", pady=(0, 10))
+
+            # إطار تحذير
+            warning_frame = tk.Frame(teacher_frame, bg="#FFF3CD", relief=tk.RIDGE, bd=1)
+            warning_frame.pack(fill=tk.X, pady=(0, 10))
+
+            tk.Label(
+                warning_frame,
+                text="⚠ لا يوجد أعضاء هيئة تدريس محددين لهذه الدورة - يمكنك البحث عن أي مدرس",
+                font=("Tajawal", 11),
+                bg="#FFF3CD",
+                fg="#856404"
+            ).pack(pady=5)
+
+            search_entry = tk.Entry(
+                teacher_frame,
+                font=("Tajawal", 13),
+                width=40
+            )
+            search_entry.pack(fill=tk.X, pady=(0, 20))
+
+            # قائمة المدرسين
+            tk.Label(
+                teacher_frame,
+                text="المدرسون المتاحون:",
+                font=("Tajawal", 13, "bold"),
+                bg=self.COLORS["surface"]
+            ).pack(anchor="w", pady=(0, 10))
+
+            list_frame = tk.Frame(teacher_frame, bg="white", relief=tk.GROOVE, bd=2)
+            list_frame.pack(fill=tk.BOTH, expand=True)
+
+            scrollbar = tk.Scrollbar(list_frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+            teachers_listbox = tk.Listbox(
+                list_frame,
+                font=("Tajawal", 12),
+                yscrollcommand=scrollbar.set,
+                height=10
+            )
+            teachers_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=teachers_listbox.yview)
+
+            def load_teachers():
+                """تحميل المدرسين"""
+                search_text = search_entry.get().strip()
+
+                teachers_listbox.delete(0, tk.END)
+                teachers_map.clear()
+
+                try:
+                    if search_text:
+                        cursor.execute("""
+                            SELECT id, name, rank, workplace, id_number, category, qualification
+                            FROM teachers
+                            WHERE name LIKE ?
+                            ORDER BY name
+                            LIMIT 50
+                        """, (f'%{search_text}%',))
+                    else:
+                        cursor.execute("""
+                            SELECT id, name, rank, workplace, id_number, category, qualification
+                            FROM teachers
+                            ORDER BY name
+                            LIMIT 100
+                        """)
+
+                    teachers = cursor.fetchall()
+
+                    for i, (tid, name, rank, workplace, id_number, category, qualification) in enumerate(teachers):
+                        display_text = f"{name} - {rank}"
+                        if workplace:
+                            display_text += f" ({workplace})"
+                        # إضافة الفئة للعرض
+                        if category and "متعاون" in category:
+                            display_text += f" - {category}"
+                        teachers_listbox.insert(tk.END, display_text)
+                        teachers_map[i] = tid
+
+                except Exception as e:
+                    print(f"خطأ في تحميل المدرسين: {e}")
+
+            # عند الكتابة في البحث
+            def on_search_change(*args):
+                load_teachers()
+
+            search_entry.bind('<KeyRelease>', on_search_change)
+
+            # عند اختيار مدرس
+            def on_teacher_select(event):
+                selection = teachers_listbox.curselection()
+                if selection:
+                    selected_teacher_id.set(teachers_map[selection[0]])
+
+            teachers_listbox.bind('<<ListboxSelect>>', on_teacher_select)
+
+            # تحميل القائمة الأولية
+            load_teachers()
+
+        # الأزرار
+        btn_frame = tk.Frame(assign_window, bg=self.COLORS["surface"])
+        btn_frame.pack(fill=tk.X, pady=20)
+
+        def save():
+            # التحقق من المادة
+            if selected_subject_id.get() == 0:
+                messagebox.showwarning("تنبيه", "يرجى اختيار المادة")
+                return
+
+            # التحقق من المدرس
+            if selected_teacher_id.get() == 0:
+                messagebox.showwarning("تنبيه", "يرجى اختيار مدرس من القائمة")
+                return
+
+            # الحصول على نوع المادة مباشرة من Combobox
+            selected_subject_type = subject_type_combo.get()
+
+            # التحقق من التعارضات لجميع الأسابيع
+            has_conflict, conflict_details = self._check_teacher_conflict(
+                selected_teacher_id.get(),
+                program_id,
+                week_number,
+                day_index,
+                period_number
+            )
+
+            if has_conflict:
+                # بناء رسالة التعارض
+                conflict_msg = "لا يمكن إضافة هذا المدرس بسبب وجود تعارضات في الأسابيع التالية:\n\n"
+
+                # تجميع التعارضات حسب الأسبوع
+                conflicts_by_week = {}
+                for conflict in conflict_details:
+                    week = conflict['conflicting_week_in_current']
+                    if week not in conflicts_by_week:
+                        conflicts_by_week[week] = []
+                    conflicts_by_week[week].append(conflict)
+
+                for week in sorted(conflicts_by_week.keys()):
+                    conflict_msg += f"🔴 الأسبوع {week}:\n"
+                    for conflict in conflicts_by_week[week]:
+                        conflict_msg += f"   • البرنامج: {conflict['program_number']}\n"
+                        conflict_msg += f"     الدورة: {conflict['course_name']}\n"
+                        conflict_msg += f"     المادة: {conflict['subject_name']}\n"
+                        conflict_msg += f"     التاريخ: {conflict['date']}\n\n"
+
+                conflict_msg += "يرجى اختيار مدرس آخر أو تغيير الوقت."
+
+                messagebox.showerror("تعارض في الجدول", conflict_msg)
+                return
+
+            try:
+                # التأكد من وجود عمود subject_type
+                cursor.execute("PRAGMA table_info(program_schedule)")
+                columns = [column[1] for column in cursor.fetchall()]
+
+                if 'subject_type' not in columns:
+                    cursor.execute("ALTER TABLE program_schedule ADD COLUMN subject_type TEXT DEFAULT 'نظري'")
+                    self.db_conn.commit()
+
+                # حساب عدد الأسابيع الكلي
+                cursor.execute("""
+                    SELECT start_date, end_date FROM training_programs 
+                    WHERE id = ?
+                """, (program_id,))
+
+                dates = cursor.fetchone()
+                from datetime import datetime
+                start_date = datetime.strptime(dates[0], "%Y-%m-%d")
+                end_date = datetime.strptime(dates[1], "%Y-%m-%d")
+                total_weeks = ((end_date - start_date).days // 7) + 1
+
+                # حفظ التعيين لجميع الأسابيع
+                success_count = 0
+                for week in range(1, total_weeks + 1):
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO program_schedule
+                        (program_id, week_number, day_of_week, period_number,
+                         start_time, end_time, subject_id, teacher_id, 
+                         subject_type, is_break, teacher_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+                    """, (program_id, week, day_index, period_number,
+                          time_info[0], time_info[1], selected_subject_id.get(),
+                          selected_teacher_id.get(), selected_subject_type))
+
+                    success_count += 1
+
+                self.db_conn.commit()
+
+                messagebox.showinfo(
+                    "نجاح",
+                    f"تم حفظ التعيين بنجاح\nنوع المادة: {selected_subject_type}\nتم التطبيق على {success_count} أسبوع"
+                )
+
+                assign_window.destroy()
+                parent_window.destroy()
+                self._manage_program_schedule(program_id, "", parent_window.master)
+
+            except Exception as e:
+                self.db_conn.rollback()
+                messagebox.showerror("خطأ", f"حدث خطأ: {str(e)}")
+
+        btn_container = tk.Frame(btn_frame, bg=self.COLORS["surface"])
+        btn_container.pack()
+
+        tk.Button(
+            btn_container,
+            text="حفظ (لجميع الأسابيع)",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["success"],
+            fg="white",
+            bd=0,
+            padx=40,
+            pady=10,
+            cursor="hand2",
+            command=save
+        ).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(
+            btn_container,
+            text="إلغاء",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["danger"],
+            fg="white",
+            bd=0,
+            padx=40,
+            pady=10,
+            cursor="hand2",
+            command=assign_window.destroy
+        ).pack(side=tk.LEFT, padx=10)
+
+    def _assign_entity_subject(self, program_id, day_index, period_number, week_number, parent_window):
+        """تعيين جهة تدريب ومادة"""
+        assign_window = tk.Toplevel(parent_window)
+        assign_window.title("إضافة جهة تتولى التدريب")
+        assign_window.geometry("500x500")
+        assign_window.configure(bg=self.COLORS["surface"])
+        assign_window.transient(parent_window)
+        assign_window.grab_set()
+
+        # توسيط النافذة
+        assign_window.update_idletasks()
+        x = (assign_window.winfo_screenwidth() - 500) // 2
+        y = (assign_window.winfo_screenheight() - 500) // 2
+        assign_window.geometry(f"500x500+{x}+{y}")
+
+        # العنوان
+        days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"]
+
+        cursor = self.db_conn.cursor()
+        cursor.execute("""
+            SELECT start_time, end_time FROM default_periods
+            WHERE period_number = ?
+        """, (period_number,))
+        time_info = cursor.fetchone()
+
+        header = tk.Label(
+            assign_window,
+            text=f"الأسبوع {week_number} - {days[day_index]}\nالحصة {period_number} ({time_info[0]} - {time_info[1]})",
+            font=("Tajawal", 16, "bold"),
+            bg="#FF9800",
+            fg="white",
+            pady=20
+        )
+        header.pack(fill=tk.X)
+
+        # إطار المحتوى
+        content = tk.Frame(assign_window, bg=self.COLORS["surface"], padx=30, pady=30)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        # اختيار المادة
+        tk.Label(
+            content,
+            text="اختر المادة:",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["surface"]
+        ).pack(anchor="w", pady=(0, 10))
+
+        cursor.execute("""
+            SELECT id, subject_name, subject_order
+            FROM program_subjects
+            WHERE program_id = ? AND subject_order != 999
+            ORDER BY subject_order
+        """, (program_id,))
+
+        subjects = cursor.fetchall()
+
+        # متغير لحفظ معرف المادة المختارة
+        selected_subject_id = tk.IntVar(value=0)
+
+        subject_combo = ttk.Combobox(
+            content,
+            font=("Tajawal", 13),
+            state="readonly",
+            width=40
+        )
+
+        # إنشاء قائمة المواد
+        subject_list = []
+        subject_map = {}  # ربط الفهرس بمعرف المادة
+
+        for i, (sid, sname, sorder) in enumerate(subjects):
+            text = f"{sorder}. {sname}"
+            subject_list.append(text)
+            subject_map[i] = sid
+
+        subject_combo['values'] = subject_list
+        subject_combo.pack(fill=tk.X, pady=(0, 40))
+
+        # اختيار أول مادة افتراضياً
+        if subject_list:
+            subject_combo.current(0)
+            selected_subject_id.set(subject_map[0])
+
+        # عند تغيير المادة
+        def on_subject_change(event):
+            index = subject_combo.current()
+            if index >= 0:
+                selected_subject_id.set(subject_map[index])
+
+        subject_combo.bind('<<ComboboxSelected>>', on_subject_change)
+
+        # اسم الجهة
+        tk.Label(
+            content,
+            text="اسم الجهة التي تتولى التدريب:",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["surface"]
+        ).pack(anchor="w", pady=(0, 10))
+
+        entity_entry = tk.Entry(
+            content,
+            font=("Tajawal", 14),
+            width=40,
+            justify="center"
+        )
+        entity_entry.pack(fill=tk.X, pady=(0, 20))
+        entity_entry.focus_set()
+
+        # الأزرار
+        btn_frame = tk.Frame(assign_window, bg=self.COLORS["surface"])
+        btn_frame.pack(fill=tk.X, pady=20)
+
+        def save():
+            # التحقق من المادة
+            if selected_subject_id.get() == 0:
+                messagebox.showwarning("تنبيه", "يرجى اختيار المادة")
+                return
+
+            # التحقق من اسم الجهة
+            entity_name = entity_entry.get().strip()
+            if not entity_name:
+                messagebox.showwarning("تنبيه", "يرجى إدخال اسم الجهة")
+                return
+
+            try:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO program_schedule
+                    (program_id, week_number, day_of_week, period_number,
+                     start_time, end_time, subject_id, teacher_id, teacher_name, is_break)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 0)
+                """, (program_id, week_number, day_index, period_number,
+                      time_info[0], time_info[1], selected_subject_id.get(), entity_name))
+
+                self.db_conn.commit()
+                messagebox.showinfo("نجاح", "تم حفظ التعيين بنجاح")
+
+                assign_window.destroy()
+                parent_window.destroy()
+                self._manage_program_schedule(program_id, "", parent_window.master)
+
+            except Exception as e:
+                messagebox.showerror("خطأ", f"حدث خطأ: {str(e)}")
+
+        btn_container = tk.Frame(btn_frame, bg=self.COLORS["surface"])
+        btn_container.pack()
+
+        tk.Button(
+            btn_container,
+            text="حفظ",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["success"],
+            fg="white",
+            bd=0,
+            padx=40,
+            pady=10,
+            cursor="hand2",
+            command=save
+        ).pack(side=tk.LEFT, padx=10)
+
+        tk.Button(
+            btn_container,
+            text="إلغاء",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["danger"],
+            fg="white",
+            bd=0,
+            padx=40,
+            pady=10,
+            cursor="hand2",
+            command=assign_window.destroy
+        ).pack(side=tk.LEFT, padx=10)
+
+    def _show_assignment_options(self, program_id, day_index, period_number, week_number, parent_window,
+                                 edit_mode=False):
+        """عرض خيارات التعيين (مدرس أو جهة)"""
+        options_window = tk.Toplevel(parent_window)
+        options_window.title("اختر نوع التعيين")
+        options_window.geometry("400x300")
+        options_window.configure(bg=self.COLORS["surface"])
+        options_window.transient(parent_window)
+        options_window.grab_set()
+
+        # توسيط النافذة
+        options_window.update_idletasks()
+        x = (options_window.winfo_screenwidth() - 400) // 2
+        y = (options_window.winfo_screenheight() - 300) // 2
+        options_window.geometry(f"400x300+{x}+{y}")
+
+        # العنوان
+        days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"]
+
+        header = tk.Label(
+            options_window,
+            text=f"{days[day_index]} - الحصة {period_number}",
+            font=("Tajawal", 18, "bold"),
+            bg="#1E3A5F",
+            fg="white",
+            pady=20
+        )
+        header.pack(fill=tk.X)
+
+        # إطار الخيارات
+        options_frame = tk.Frame(options_window, bg=self.COLORS["surface"])
+        options_frame.pack(fill=tk.BOTH, expand=True, pady=30)
+
+        # زر مدرس ومادة
+        teacher_btn = tk.Button(
+            options_frame,
+            text="إضافة مدرس ومادة",
+            font=("Tajawal", 16, "bold"),
+            bg="#2196F3",
+            fg="white",
+            width=25,
+            height=2,
+            bd=0,
+            cursor="hand2",
+            command=lambda: [options_window.destroy(),
+                             self._assign_teacher_subject(program_id, day_index, period_number, week_number,
+                                                          parent_window)]
+        )
+        teacher_btn.pack(pady=10)
+
+        # زر جهة تدريب
+        entity_btn = tk.Button(
+            options_frame,
+            text="إضافة جهة تتولى التدريب",
+            font=("Tajawal", 16, "bold"),
+            bg="#FF9800",
+            fg="white",
+            width=25,
+            height=2,
+            bd=0,
+            cursor="hand2",
+            command=lambda: [options_window.destroy(),
+                             self._assign_entity_subject(program_id, day_index, period_number, week_number,
+                                                         parent_window)]
+        )
+        entity_btn.pack(pady=10)
+
+        # تأثيرات hover
+        teacher_btn.bind("<Enter>", lambda e: teacher_btn.config(bg="#1976D2"))
+        teacher_btn.bind("<Leave>", lambda e: teacher_btn.config(bg="#2196F3"))
+
+        entity_btn.bind("<Enter>", lambda e: entity_btn.config(bg="#F57C00"))
+        entity_btn.bind("<Leave>", lambda e: entity_btn.config(bg="#FF9800"))
+
+    def _export_schedule_for_teacher(self, program_id, week_number):
+        """تصدير جدول مخصص لمدرس معين - يشمل جميع البرامج التي يدرسها"""
+        # نافذة اختيار المدرس
+        select_window = tk.Toplevel(self)
+        select_window.title("اختر المدرس")
+        select_window.geometry("600x700")
+        select_window.configure(bg=self.COLORS["surface"])
+        select_window.transient(self)
+        select_window.grab_set()
+
+        # توسيط النافذة
+        select_window.update_idletasks()
+        x = (select_window.winfo_screenwidth() - 600) // 2
+        y = (select_window.winfo_screenheight() - 700) // 2
+        select_window.geometry(f"600x700+{x}+{y}")
+
+        # العنوان
+        header = tk.Label(
+            select_window,
+            text="اختر المدرس لتصدير جدوله الشامل",
+            font=("Tajawal", 18, "bold"),
+            bg="#17a2b8",
+            fg="white",
+            pady=20
+        )
+        header.pack(fill=tk.X)
+
+        # إطار المحتوى
+        content = tk.Frame(select_window, bg=self.COLORS["surface"], padx=20, pady=20)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        # البحث
+        tk.Label(
+            content,
+            text="البحث عن مدرس:",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["surface"]
+        ).pack(anchor=tk.W, pady=(0, 10))
+
+        search_entry = tk.Entry(content, font=("Tajawal", 13), width=40)
+        search_entry.pack(fill=tk.X, pady=(0, 20))
+
+        # قائمة المدرسين
+        list_frame = tk.Frame(content, bg="white", relief=tk.GROOVE, bd=2)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        teachers_listbox = tk.Listbox(
+            list_frame,
+            font=("Tajawal", 12),
+            yscrollcommand=scrollbar.set
+        )
+        teachers_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=teachers_listbox.yview)
+
+        # الحصول على جميع المدرسين من جميع البرامج النشطة
+        cursor = self.db_conn.cursor()
+        cursor.execute("""
+            SELECT DISTINCT t.id, t.name, t.rank
+            FROM teachers t
+            INNER JOIN program_schedule ps ON t.id = ps.teacher_id
+            INNER JOIN training_programs tp ON ps.program_id = tp.id
+            WHERE date('now') BETWEEN date(tp.start_date) AND date(tp.end_date)
+            ORDER BY t.name
+        """)
+
+        teachers = cursor.fetchall()
+        teachers_map = {}
+
+        def load_teachers(search_term=""):
+            teachers_listbox.delete(0, tk.END)
+            teachers_map.clear()
+
+            idx = 0
+            for teacher_id, name, rank in teachers:
+                if not search_term or search_term.lower() in name.lower():
+                    display_text = f"{name} - {rank}"
+                    teachers_listbox.insert(tk.END, display_text)
+                    teachers_map[idx] = (teacher_id, name, rank)
+                    idx += 1
+
+        def on_search(*args):
+            load_teachers(search_entry.get())
+
+        search_entry.bind('<KeyRelease>', on_search)
+        load_teachers()
+
+        def export_selected():
+            selection = teachers_listbox.curselection()
+            if not selection:
+                messagebox.showwarning("تنبيه", "يرجى اختيار مدرس")
+                return
+
+            teacher_id, teacher_name, teacher_rank = teachers_map[selection[0]]
+            select_window.destroy()
+
+            # تصدير الجدول الشامل
+            self._create_comprehensive_teacher_schedule(teacher_id, teacher_name, teacher_rank, week_number)
+
+        # الأزرار
+        btn_frame = tk.Frame(select_window, bg=self.COLORS["surface"])
+        btn_frame.pack(fill=tk.X, pady=20)
+
+        tk.Button(
+            btn_frame,
+            text="تصدير",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["success"],
+            fg="white",
+            bd=0,
+            padx=30,
+            pady=10,
+            cursor="hand2",
+            command=export_selected
+        ).pack(side=tk.LEFT, padx=20)
+
+        tk.Button(
+            btn_frame,
+            text="إلغاء",
+            font=("Tajawal", 14, "bold"),
+            bg=self.COLORS["danger"],
+            fg="white",
+            bd=0,
+            padx=30,
+            pady=10,
+            cursor="hand2",
+            command=select_window.destroy
+        ).pack(side=tk.RIGHT, padx=20)
+
+    # تحديث دالة تصدير جدول المدرس الشامل
+    def _create_comprehensive_teacher_schedule(self, teacher_id, teacher_name, teacher_rank, week_number):
+        """إنشاء جدول شامل للمدرس مع نوع المادة"""
+        if not DOCX_AVAILABLE:
+            messagebox.showerror("خطأ", "يجب تثبيت مكتبة python-docx\npip install python-docx")
+            return
+
+        try:
+            from tkinter import filedialog
+            from docx import Document
+            from docx.shared import Inches, Pt, RGBColor
+            from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+            from docx.enum.table import WD_TABLE_ALIGNMENT
+            from docx.oxml import parse_xml
+            from docx.oxml.ns import nsdecls
+
+            # إنشاء المستند
+            doc = Document()
+
+            # تعيين الهوامش
+            sections = doc.sections
+            for section in sections:
+                section.page_width = Inches(11.69)  # A4 landscape
+                section.page_height = Inches(8.27)
+                section.left_margin = Inches(0.5)
+                section.right_margin = Inches(0.5)
+                section.top_margin = Inches(0.5)
+                section.bottom_margin = Inches(0.5)
+
+            # العنوان
+            title = doc.add_heading('', level=0)
+            title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            run = title.add_run('جدول المدرس الشامل')
+            run.font.size = Pt(26)
+            run.font.name = 'Arial'
+            run.font.bold = True
+
+            # اسم المدرس
+            teacher_para = doc.add_paragraph()
+            teacher_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            teacher_run = teacher_para.add_run(f'{teacher_rank} / {teacher_name}')
+            teacher_run.font.size = Pt(22)
+            teacher_run.font.name = 'Arial'
+            teacher_run.font.bold = True
+
+            # الأسبوع
+            week_para = doc.add_paragraph()
+            week_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            week_run = week_para.add_run(f'الأسبوع: {week_number}')
+            week_run.font.size = Pt(18)
+            week_run.font.name = 'Arial'
+
+            doc.add_paragraph()  # فراغ
+
+            # الحصول على الأيام والحصص
+            days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس"]
+            cursor = self.db_conn.cursor()
+            cursor.execute("""
+                SELECT period_number, start_time, end_time
+                FROM default_periods
+                WHERE is_break = 0
+                ORDER BY period_number
+            """)
+            periods = cursor.fetchall()
+
+            # إنشاء الجدول
+            table = doc.add_table(rows=len(days) + 1, cols=len(periods) + 1)
+            table.style = 'Table Grid'
+            table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+            # تعيين اتجاه الجدول RTL
+            tbl = table._element
+            tblPr = tbl.xpath('./w:tblPr')[0]
+            bidi = parse_xml(r'<w:bidiVisual {} />'.format(nsdecls('w')))
+            tblPr.append(bidi)
+
+            # العمود الأول (من اليمين) - الأيام/الحصص
+            corner_cell = table.cell(0, 0)
+            corner_cell.text = "الأيام / الحصص"
+            self._format_cell_formal(corner_cell, bold=True, size=16, center=True, header=True)
+
+            # رؤوس الحصص
+            for idx, period in enumerate(periods):
+                cell = table.cell(0, idx + 1)
+                cell.text = f'الحصة {period[0]}\n{period[1]} - {period[2]}'
+                self._format_cell_formal(cell, bold=True, size=14, center=True, header=True)
+
+            # التحقق من وجود عمود subject_type
+            cursor.execute("PRAGMA table_info(program_schedule)")
+            columns = [column[1] for column in cursor.fetchall()]
+            has_subject_type = 'subject_type' in columns
+
+            # الحصول على جدول المدرس الشامل
+            if has_subject_type:
+                cursor.execute("""
+                    SELECT 
+                        ps.day_of_week, 
+                        ps.period_number, 
+                        psub.subject_name,
+                        tp.program_number,
+                        cn.name as course_name,
+                        ps.subject_type
+                    FROM program_schedule ps
+                    INNER JOIN training_programs tp ON ps.program_id = tp.id
+                    LEFT JOIN course_names cn ON tp.course_name_id = cn.id
+                    LEFT JOIN program_subjects psub ON ps.subject_id = psub.id
+                    WHERE ps.teacher_id = ? 
+                    AND ps.week_number = ?
+                    AND date('now') BETWEEN date(tp.start_date) AND date(tp.end_date)
+                    ORDER BY ps.day_of_week, ps.period_number
+                """, (teacher_id, week_number))
+            else:
+                cursor.execute("""
+                    SELECT 
+                        ps.day_of_week, 
+                        ps.period_number, 
+                        psub.subject_name,
+                        tp.program_number,
+                        cn.name as course_name,
+                        'نظري' as subject_type
+                    FROM program_schedule ps
+                    INNER JOIN training_programs tp ON ps.program_id = tp.id
+                    LEFT JOIN course_names cn ON tp.course_name_id = cn.id
+                    LEFT JOIN program_subjects psub ON ps.subject_id = psub.id
+                    WHERE ps.teacher_id = ? 
+                    AND ps.week_number = ?
+                    AND date('now') BETWEEN date(tp.start_date) AND date(tp.end_date)
+                    ORDER BY ps.day_of_week, ps.period_number
+                """, (teacher_id, week_number))
+
+            teacher_schedule = {}
+            program_list = set()
+
+            for row in cursor.fetchall():
+                day, period, subject, program_number, course_name, subject_type = row
+                teacher_schedule[(day, period)] = {
+                    'subject': subject,
+                    'program_number': program_number,
+                    'course_name': course_name,
+                    'subject_type': subject_type or 'نظري'
+                }
+                if course_name:
+                    program_list.add((program_number, course_name))
+
+            # ملء الجدول
+            for row_idx, day_name in enumerate(days):
+                # اسم اليوم في العمود الأول (من اليمين)
+                day_cell = table.cell(row_idx + 1, 0)
+                day_cell.text = day_name
+                self._format_cell_formal(day_cell, bold=True, size=14, center=True, day=True)
+
+                # الحصص
+                for idx, period in enumerate(periods):
+                    cell = table.cell(row_idx + 1, idx + 1)
+
+                    data = teacher_schedule.get((row_idx, period[0]))
+                    if data and data['subject']:
+                        # عرض المادة ونوعها واسم البرنامج
+                        text = f"{data['subject']} - {data['subject_type']}\n{data['course_name']}"
+                        cell.text = text
+                        self._format_cell_formal(cell, bold=True, size=13, center=True,
+                                                 even_row=(row_idx % 2 == 1), is_general=True)
+                    else:
+                        cell.text = ""
+                        self._format_cell_formal(cell, bold=False, size=13, center=True,
+                                                 even_row=(row_idx % 2 == 1))
+
+            # حفظ الملف
+            file_path = filedialog.asksaveasfilename(
+                title="حفظ جدول المدرس الشامل",
+                defaultextension=".docx",
+                initialfile=f"جدول_{teacher_name}_أسبوع_{week_number}_شامل.docx",
+                filetypes=[("Word files", "*.docx"), ("All files", "*.*")]
+            )
+
+            if file_path:
+                doc.save(file_path)
+                messagebox.showinfo("نجاح", "تم تصدير جدول المدرس الشامل بنجاح")
+
+        except Exception as e:
+            messagebox.showerror("خطأ", f"حدث خطأ: {str(e)}")
